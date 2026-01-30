@@ -396,7 +396,152 @@ function Update:Window(config)
             L.Font = Enum.Font.Gotham
             L.TextSize = 14
             L.Parent = Page
-            return L
+            
+            return {
+                Instance = L,
+                Set = function(self, val) L.Text = val end 
+            }
+        end
+
+        function Elements:CreateDropdown(text, options, cb)
+            local F = Instance.new("Frame")
+            F.Size = UDim2.new(1, 0, 0, 42)
+            F.BackgroundColor3 = COLORS.Element
+            F.Parent = Page
+            Instance.new("UICorner", F).CornerRadius = UDim.new(0, 6)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(0.7, 0, 1, 0)
+            L.Position = UDim2.new(0, 15, 0, 0)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = F
+            
+            local selected = nil
+            
+            local DBtn = Instance.new("TextButton")
+            DBtn.Size = UDim2.new(0, 100, 1, 0)
+            DBtn.Position = UDim2.new(1, -110, 0, 0)
+            DBtn.BackgroundColor3 = COLORS.Background
+            DBtn.TextColor3 = COLORS.SubText
+            DBtn.Font = Enum.Font.GothamBold
+            DBtn.TextSize = 12
+            DBtn.Text = "Select"
+            DBtn.AutoButtonColor = false
+            DBtn.Parent = F
+            Instance.new("UICorner", DBtn).CornerRadius = UDim.new(0, 4)
+            
+            local dropdownOpen = false
+            local dropdownFrame = Instance.new("ScrollingFrame")
+            dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+            dropdownFrame.Position = UDim2.new(0, 0, 1, 5)
+            dropdownFrame.BackgroundColor3 = COLORS.Element
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ScrollBarThickness = 8
+            dropdownFrame.ScrollBarImageColor3 = COLORS.Accent
+            dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            dropdownFrame.ClipsDescendants = true
+            dropdownFrame.Visible = false
+            dropdownFrame.Parent = F
+            Instance.new("UICorner", dropdownFrame).CornerRadius = UDim.new(0, 6)
+            
+            local dropdownList = Instance.new("UIListLayout")
+            dropdownList.SortOrder = Enum.SortOrder.LayoutOrder
+            dropdownList.Padding = UDim.new(0, 3)
+            dropdownList.Parent = dropdownFrame
+            
+            local dropdownPadding = Instance.new("UIPadding")
+            dropdownPadding.PaddingTop = UDim.new(0, 5)
+            dropdownPadding.PaddingLeft = UDim.new(0, 5)
+            dropdownPadding.PaddingRight = UDim.new(0, 5)
+            dropdownPadding.PaddingBottom = UDim.new(0, 5)
+            dropdownPadding.Parent = dropdownFrame
+            
+            local function UpdateDropdown()
+                if selected then
+                    DBtn.Text = selected
+                    Tween(DBtn, {TextColor3 = COLORS.Accent})
+                else
+                    DBtn.Text = "Select"
+                    Tween(DBtn, {TextColor3 = COLORS.SubText})
+                end
+                pcall(cb, selected)
+            end
+            
+            local function CreateOption(option)
+                local Opt = Instance.new("TextButton")
+                Opt.Size = UDim2.new(1, -10, 0, 28)
+                Opt.BackgroundColor3 = COLORS.Background
+                Opt.TextColor3 = COLORS.Text
+                Opt.Font = Enum.Font.GothamSemibold
+                Opt.TextSize = 12
+                Opt.Text = option
+                Opt.AutoButtonColor = false
+                Opt.Parent = dropdownFrame
+                Instance.new("UICorner", Opt).CornerRadius = UDim.new(0, 4)
+                
+                Opt.MouseButton1Click:Connect(function()
+                    selected = option
+                    dropdownOpen = false
+                    dropdownFrame.Visible = false
+                    local height = math.min(#options * 33, 200)
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                    F.ZIndex = 1
+                    dropdownFrame.ZIndex = 1
+                    
+                    UpdateDropdown()
+                end)
+                
+                Opt.MouseEnter:Connect(function()
+                    Tween(Opt, {BackgroundColor3 = COLORS.Hover})
+                end)
+                Opt.MouseLeave:Connect(function()
+                    Tween(Opt, {BackgroundColor3 = COLORS.Background})
+                end)
+            end
+            
+            for _, option in ipairs(options) do
+                CreateOption(option)
+            end
+            
+            DBtn.MouseButton1Click:Connect(function()
+                dropdownOpen = not dropdownOpen
+                if dropdownOpen then
+                    dropdownFrame.Visible = true
+                    local itemCount = #options
+                    local height = math.min(itemCount * 33, 200)
+                    dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, itemCount * 33 + 10)
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, height)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                    
+                    -- Set dropdown above other elements
+                    F.ZIndex = 2
+                    dropdownFrame.ZIndex = 3
+                else
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                    task.wait(0.3)
+                    dropdownFrame.Visible = false
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                    F.ZIndex = 1
+                    dropdownFrame.ZIndex = 1
+                end
+            end)
+            
+            DBtn.MouseEnter:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                end
+            end)
+            DBtn.MouseLeave:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                end
+            end)
         end
 
          function Elements:CreateLine()
@@ -501,6 +646,11 @@ function Update:Window(config)
             local cb = a2
             if type(a1) == "function" then cb = a1 end
             tabElements:CreateTextbox(text, cb)
+        end
+        
+        function tabWrapper:Dropdown(text, options, cb)
+             if type(options) ~= "table" then options = {} end
+             tabElements:CreateDropdown(text, options, cb)
         end
         
         return tabWrapper
