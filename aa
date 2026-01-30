@@ -765,8 +765,6 @@ function Update:Window(config)
         end
         
         function tabWrapper:Textbox(text, a1, a2)
-            -- Untitled-1 usage: Textbox(text, true, callback)?
-            -- Check usage 'ServTab:Textbox("Enter Server Job ID", true, function(value)'
             local cb = a2
             if type(a1) == "function" then cb = a1 end
             tabElements:CreateTextbox(text, cb)
@@ -778,7 +776,11 @@ function Update:Window(config)
         end
 
         function tabWrapper:Slider(text, min, max, def, cb)
-            tabElements:CreateSlider(text, min, max, def, cb)
+            if tabElements.CreateSlider then
+                tabElements:CreateSlider(text, min, max, def, cb)
+            else
+                warn("CreateSlider missing in Elements")
+            end
         end
         
         return tabWrapper
@@ -2058,103 +2060,8 @@ spawn(function()
 	end;
 end);
 spawn(function()
-	while wait(1) do
-		local appleSpawner = game.Workspace:FindFirstChild("AppleSpawner")
-		if appleSpawner then
-			for i, v in pairs(appleSpawner:GetChildren()) do
-			if v:IsA("Tool") then
-				if _G.Settings.Esp["ESP RealFruit"] then
-					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
-						local bill = Instance.new("BillboardGui", v.Handle);
-						bill.Name = "EspRealFruit" .. Number;
-						bill.ExtentsOffset = Vector3.new(0, 1, 0);
-						bill.Size = UDim2.new(1, 200, 1, 30);
-						bill.Adornee = v.Handle;
-						bill.AlwaysOnTop = true;
-						local name = Instance.new("TextLabel", bill);
-						name.Font = Enum.Font.GothamSemibold;
-						name.FontSize = "Size14";
-						name.TextWrapped = true;
-						name.Size = UDim2.new(1, 0, 1, 0);
-						name.TextYAlignment = "Top";
-						name.BackgroundTransparency = 1;
-						name.TextStrokeTransparency = 0.5;
-						name.TextColor3 = Color3.fromRGB(200, 70, 70);
-						name.Text = v.Name .. " \n" .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					else
-						v.Handle["EspRealFruit" .. Number].TextLabel.Text = v.Name .. " " .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					end;
-				elseif v.Handle:FindFirstChild("EspRealFruit" .. Number) then
-					(v.Handle:FindFirstChild("EspRealFruit" .. Number)):Destroy();
-				end;
-			end;
-		end;
-		end
-
-		local pineappleSpawner = game.Workspace:FindFirstChild("PineappleSpawner")
-		if pineappleSpawner then
-			for i, v in pairs(pineappleSpawner:GetChildren()) do
-			if v:IsA("Tool") then
-				if _G.Settings.Esp["ESP RealFruit"] then
-					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
-						local bill = Instance.new("BillboardGui", v.Handle);
-						bill.Name = "EspRealFruit" .. Number;
-						bill.ExtentsOffset = Vector3.new(0, 1, 0);
-						bill.Size = UDim2.new(1, 200, 1, 30);
-						bill.Adornee = v.Handle;
-						bill.AlwaysOnTop = true;
-						local name = Instance.new("TextLabel", bill);
-						name.Font = Enum.Font.GothamSemibold;
-						name.FontSize = "Size14";
-						name.TextWrapped = true;
-						name.Size = UDim2.new(1, 0, 1, 0);
-						name.TextYAlignment = "Top";
-						name.BackgroundTransparency = 1;
-						name.TextStrokeTransparency = 0.5;
-						name.TextColor3 = Color3.fromRGB(255, 170, 0);
-						name.Text = v.Name .. " \n" .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					else
-						v.Handle["EspRealFruit" .. Number].TextLabel.Text = v.Name .. " " .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					end;
-				elseif v.Handle:FindFirstChild("EspRealFruit" .. Number) then
-					(v.Handle:FindFirstChild("EspRealFruit" .. Number)):Destroy();
-				end;
-			end;
-		end;
-		end
-
-		local bananaSpawner = game.Workspace:FindFirstChild("BananaSpawner")
-		if bananaSpawner then
-			for i, v in pairs(bananaSpawner:GetChildren()) do
-			if v:IsA("Tool") then
-				if _G.Settings.Esp["ESP RealFruit"] then
-					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
-						local bill = Instance.new("BillboardGui", v.Handle);
-						bill.Name = "EspRealFruit" .. Number;
-						bill.ExtentsOffset = Vector3.new(0, 1, 0);
-						bill.Size = UDim2.new(1, 200, 1, 30);
-						bill.Adornee = v.Handle;
-						bill.AlwaysOnTop = true;
-						local name = Instance.new("TextLabel", bill);
-						name.Font = Enum.Font.GothamSemibold;
-						name.FontSize = "Size14";
-						name.TextWrapped = true;
-						name.Size = UDim2.new(1, 0, 1, 0);
-						name.TextYAlignment = "Top";
-						name.BackgroundTransparency = 1;
-						name.TextStrokeTransparency = 0.5;
-						name.TextColor3 = Color3.fromRGB(240, 255, 10);
-						name.Text = v.Name .. " \n" .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					else
-						v.Handle["EspRealFruit" .. Number].TextLabel.Text = v.Name .. " " .. round((((game:GetService("Players")).LocalPlayer.Character.Head.Position - v.Handle.Position)).Magnitude / 3) .. " Distance";
-					end;
-				elseif v.Handle:FindFirstChild("EspRealFruit" .. Number) then
-					(v.Handle:FindFirstChild("EspRealFruit" .. Number)):Destroy();
-				end;
-			end;
-		end;
-		end
-	end;
+	-- AppleSpawner logic removed temporarily
+	while wait(10) do end
 end);
 spawn(function()
 	while wait(1) do
