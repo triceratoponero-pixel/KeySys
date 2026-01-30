@@ -7,6 +7,7 @@ elseif game.PlaceId == 7449423635 then
 	World3 = true;
 end;
 
+local function RTaO_Main()
 local Update = {}
 function Update:LoadAnimation() return true end
 function Update:StartLoad() end
@@ -12706,4 +12707,6 @@ for _, v in pairs(resultNormal) do
 		ServTab:Label(tostring(NormalFruitInfo));
 	end;
 end;
-print("Script Loaded!");
+	print("Script Loaded!");
+end
+RTaO_Main()
