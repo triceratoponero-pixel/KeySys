@@ -544,6 +544,130 @@ function Update:Window(config)
             end)
         end
 
+        function Elements:CreateSlider(text, min, max, def, cb)
+            local F = Instance.new("Frame")
+            F.Size = UDim2.new(1, 0, 0, 60)
+            F.BackgroundColor3 = COLORS.Element
+            F.Parent = Page
+            Instance.new("UICorner", F).CornerRadius = UDim.new(0, 6)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(1, 0, 0, 25)
+            L.Position = UDim2.new(0, 15, 0, 5)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = F
+            
+            local V = Instance.new("TextBox")
+            V.Text = tostring(def)
+            V.Size = UDim2.new(0, 50, 0, 25)
+            V.Position = UDim2.new(1, -60, 0, 5)
+            V.BackgroundColor3 = COLORS.Background
+            V.TextColor3 = COLORS.Accent
+            V.Font = Enum.Font.GothamBold
+            V.TextSize = 14
+            V.Parent = F
+            Instance.new("UICorner", V).CornerRadius = UDim.new(0, 4)
+            
+            local MinL = Instance.new("TextLabel")
+            MinL.Text = tostring(min)
+            MinL.Size = UDim2.new(0, 30, 0, 15)
+            MinL.Position = UDim2.new(0, 15, 0, 42)
+            MinL.BackgroundTransparency = 1
+            MinL.TextColor3 = COLORS.SubText
+            MinL.Font = Enum.Font.Gotham
+            MinL.TextSize = 10
+            MinL.TextXAlignment = Enum.TextXAlignment.Left
+            MinL.Parent = F
+            
+            local MaxL = Instance.new("TextLabel")
+            MaxL.Text = tostring(max)
+            MaxL.Size = UDim2.new(0, 30, 0, 15)
+            MaxL.Position = UDim2.new(1, -45, 0, 42)
+            MaxL.BackgroundTransparency = 1
+            MaxL.TextColor3 = COLORS.SubText
+            MaxL.Font = Enum.Font.Gotham
+            MaxL.TextSize = 10
+            MaxL.TextXAlignment = Enum.TextXAlignment.Right
+            MaxL.Parent = F
+
+            local B = Instance.new("Frame")
+            B.Size = UDim2.new(1, -30, 0, 6)
+            B.Position = UDim2.new(0, 15, 0, 35)
+            B.BackgroundColor3 = COLORS.Background
+            B.Parent = F
+            Instance.new("UICorner", B).CornerRadius = UDim.new(1, 0)
+            
+            local Fill = Instance.new("Frame")
+            Fill.Size = UDim2.new((def - min) / (max - min), 0, 1, 0)
+            Fill.BackgroundColor3 = COLORS.Accent
+            Fill.Parent = B
+            Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+            
+            local BTN = Instance.new("TextButton")
+            BTN.Size = UDim2.new(1, 0, 1, 0)
+            BTN.BackgroundTransparency = 1
+            BTN.Text = ""
+            BTN.Parent = B
+            
+            local stroke = Instance.new("UIStroke", F)
+            stroke.Color = COLORS.Glow
+            stroke.Thickness = 1.5
+            stroke.Transparency = 1
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            BTN.MouseEnter:Connect(function()
+                Tween(stroke, {Transparency = 0, Color = COLORS.Accent})
+            end)
+            BTN.MouseLeave:Connect(function()
+                Tween(stroke, {Transparency = 1})
+            end)
+
+            local function Update(val)
+                val = math.clamp(val, min, max)
+                local p = (val - min) / (max - min)
+                Tween(Fill, {Size = UDim2.new(p, 0, 1, 0)}, 0.1)
+                V.Text = tostring(math.floor(val))
+                pcall(cb, val)
+            end
+
+            local function UpdFromMouse(i)
+                local p = math.clamp((i.Position.X - B.AbsolutePosition.X) / B.AbsoluteSize.X, 0, 1)
+                local val = math.floor(min + ((max - min) * p))
+                Update(val)
+            end
+
+            V.FocusLost:Connect(function()
+                local n = tonumber(V.Text)
+                if n then
+                    Update(n)
+                else
+                    V.Text = tostring(def)
+                end
+            end)
+
+            local d = false
+            BTN.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    d = true
+                    UpdFromMouse(i)
+                end
+            end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    d = false
+                end
+            end)
+            UserInputService.InputChanged:Connect(function(i)
+                if d and i.UserInputType == Enum.UserInputType.MouseMovement then
+                    UpdFromMouse(i)
+                end
+            end)
+        end
+
          function Elements:CreateLine()
             local L = Instance.new("Frame")
             L.Size = UDim2.new(1, 0, 0, 2)
@@ -651,6 +775,10 @@ function Update:Window(config)
         function tabWrapper:Dropdown(text, options, cb)
              if type(options) ~= "table" then options = {} end
              tabElements:CreateDropdown(text, options, cb)
+        end
+
+        function tabWrapper:Slider(text, min, max, def, cb)
+            tabElements:CreateSlider(text, min, max, def, cb)
         end
         
         return tabWrapper
@@ -1931,7 +2059,9 @@ spawn(function()
 end);
 spawn(function()
 	while wait(1) do
-		for i, v in pairs(game.Workspace.AppleSpawner:GetChildren()) do
+		local appleSpawner = game.Workspace:FindFirstChild("AppleSpawner")
+		if appleSpawner then
+			for i, v in pairs(appleSpawner:GetChildren()) do
 			if v:IsA("Tool") then
 				if _G.Settings.Esp["ESP RealFruit"] then
 					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
@@ -1959,7 +2089,11 @@ spawn(function()
 				end;
 			end;
 		end;
-		for i, v in pairs(game.Workspace.PineappleSpawner:GetChildren()) do
+		end
+
+		local pineappleSpawner = game.Workspace:FindFirstChild("PineappleSpawner")
+		if pineappleSpawner then
+			for i, v in pairs(pineappleSpawner:GetChildren()) do
 			if v:IsA("Tool") then
 				if _G.Settings.Esp["ESP RealFruit"] then
 					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
@@ -1987,7 +2121,11 @@ spawn(function()
 				end;
 			end;
 		end;
-		for i, v in pairs(game.Workspace.BananaSpawner:GetChildren()) do
+		end
+
+		local bananaSpawner = game.Workspace:FindFirstChild("BananaSpawner")
+		if bananaSpawner then
+			for i, v in pairs(bananaSpawner:GetChildren()) do
 			if v:IsA("Tool") then
 				if _G.Settings.Esp["ESP RealFruit"] then
 					if not v.Handle:FindFirstChild(("EspRealFruit" .. Number)) then
@@ -2015,6 +2153,7 @@ spawn(function()
 				end;
 			end;
 		end;
+		end
 	end;
 end);
 spawn(function()
