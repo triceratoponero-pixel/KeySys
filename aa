@@ -738,18 +738,26 @@ function Update:Window(config)
            tabElements:CreateButton(text, cb)
         end
         
-        function tabWrapper:Toggle(text, default, cb)
-            -- Support (text, cb) or (text, default, cb)
-            local callback = cb
-            local safeDefault = default
-            if type(default) == "function" then
-                callback = default
-                safeDefault = false
+        function tabWrapper:Toggle(text, a1, a2, a3)
+            local default, cb
+            
+            if type(a3) == "function" then
+                -- (text, default, description, cb)
+                default = a1
+                cb = a3
+            elseif type(a2) == "function" then
+                -- (text, default, cb)
+                 default = a1
+                 cb = a2
+            else
+                -- (text, cb)
+                default = false
+                cb = a1
             end
-            local toggle = tabElements:CreateToggle(text, callback)
-            if safeDefault == true and toggle.Set then
+
+            local toggle = tabElements:CreateToggle(text, cb)
+            if default == true and toggle.Set then
                toggle.Set(true)
-               -- Check if we should fire callback on init? Usually no.
             end
         end
         
