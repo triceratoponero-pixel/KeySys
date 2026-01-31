@@ -1,1 +1,3161 @@
 
+-- TRUTEL HUB - MAIN SCRIPT V6.4 (MANUAL SLIDER INPUT + VISUAL LIMITS)
+-- ===== CHOPYOURTREE INTEGRATION =====
+
+-- Wrap in function for loadstring compatibility
+local function InitializeScript()
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RunService = game:GetService("RunService")
+    local Workspace = game:GetService("Workspace")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    local UserInputService = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+
+    -- ===== GAME IDS =====
+    local CHOPYOURTREE_ID = 123557829667240
+    local TSUNAMIBRAINROT_ID = 131623223084840
+    local RIVALS_ID = 17625359962
+    
+    local CurrentGameID = game.PlaceId
+    local LocalPlayer = Players.LocalPlayer
+    local IsSupportedGame = (CurrentGameID == CHOPYOURTREE_ID or CurrentGameID == TSUNAMIBRAINROT_ID or CurrentGameID == RIVALS_ID)
+
+    local Mouse = LocalPlayer:GetMouse()
+
+    local Connections = {}
+    local Threads = {}
+
+    -- ===== UNIVERSAL UTILITIES (can be used by any game) =====
+    local function SafeDisconnect(name)
+        if Connections[name] then
+            pcall(function() Connections[name]:Disconnect() end)
+            Connections[name] = nil
+        end
+    end
+
+    local function SafeCancel(name)
+        if Threads[name] then
+            pcall(function() task.cancel(Threads[name]) end)
+            Threads[name] = nil
+        end
+    end
+
+    local function PressKey(keyCode)
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+        end)
+    end
+
+    local function ClickMouse()
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+        end)
+    end
+
+    local function SetSpeed(speed)
+        local char = LocalPlayer.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                pcall(function() humanoid.WalkSpeed = speed end)
+            end
+        end
+    end
+
+    -- ===== GAME-SPECIFIC LOGIC =====
+    local Config, State, Remotes, TIMING
+    local TapButtonClick, TreeClick, AxeSwing, CollectCoin, Prestige, ClickWateringCan, ClaimWaterPurifier, WaterPurifier
+    
+    -- Shared function registry for callbacks
+    local GameFunctions = {
+        StartAutoTap = function() end,
+        StopAutoTap = function() end,
+        StartAutoMutations = function() end,
+        StopAutoMutations = function() end,
+        StartAutoCollect = function() end,
+        StopAutoCollect = function() end,
+        StartAutoPrestige = function() end,
+        StopAutoPrestige = function() end,
+        StartAutoUseCans = function() end,
+        StopAutoUseCans = function() end,
+        StartAutoPickupCans = function() end,
+        StopAutoPickupCans = function() end,
+        StartAutoClaimPurifier = function() end,
+        StopAutoClaimPurifier = function() end,
+        StartAutoFillPurifier = function() end,
+        StopAutoFillPurifier = function() end,
+        StartAutoSteal = function() end,
+        StopAutoSteal = function() end,
+        StartAutoCollectMoney = function() end,
+        StopAutoCollectMoney = function() end,
+        StartAutoUpgradeSpeed = function() end,
+        StopAutoUpgradeSpeed = function() end,
+        StartAutoUpgradeCarry = function() end,
+        StopAutoUpgradeCarry = function() end,
+        StartAutoRebirth = function() end,
+        StopAutoRebirth = function() end,
+        StartAutoSellAll = function() end,
+        StopAutoSellAll = function() end,
+    }
+
+    if CurrentGameID == CHOPYOURTREE_ID then
+        Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        
+        if not Remotes then
+            warn("[ChopTree] Remotes folder not found")
+            return
+        end
+
+        TIMING = {
+            TAP_SPEED = 0.01,
+            MUTATION_HIT_DELAY = 0.02,
+            MUTATION_LOOP_DELAY = 0.05,
+            COIN_COLLECT_DELAY = 0.03,
+            COIN_LOOP_DELAY = 0.2,
+            PRESTIGE_INTERVAL = 5,
+            USE_CANS_KEY_DELAY = 0.3,
+            USE_CANS_CLICK_DELAY = 0.4,
+            USE_CANS_INTERVAL = 5,
+            PICKUP_CANS_DELAY = 0.3,
+            PICKUP_CANS_INTERVAL = 8,
+            CLAIM_PURIFIER_INTERVAL = 10,
+            FILL_PURIFIER_INTERVAL = 5,
+            FILL_PURIFIER_DELAY = 2,
+            STATS_UPDATE_INTERVAL = 1,
+            KEY_PRESS_DURATION = 0.05,
+            CLICK_DURATION = 0.05,
+            STEAL_DELAY = 0.5,
+            STEAL_LOOP_INTERVAL = 3,
+        }
+
+        Config = {
+            AutoTap = false,
+            TapThreads = 5,
+            AutoMutations = false,
+            AutoCollectCoins = false,
+            AutoPrestige = false,
+            SpeedHack = false,
+            SpeedAmount = 100,
+            AutoUseCans = false,
+            AutoPickupCans = false,
+            AutoClaimPurifier = false,
+            AutoFillPurifier = false,
+            AutoSteal = false,
+            WaterLevelThreshold = 3,
+        }
+
+        State = {
+            Running = true,
+            Tapping = false,
+            HittingTrees = false,
+            CollectingCoins = false,
+            UsingCans = false,
+            PickingUpCans = false,
+            Prestiging = false,
+            ClaimingPurifier = false,
+            FillingPurifier = false,
+            Stealing = false,
+        }
+
+        TapButtonClick = Remotes:FindFirstChild("TapButtonClick")
+        TreeClick = Remotes:FindFirstChild("TreeClick")
+        AxeSwing = Remotes:FindFirstChild("AxeSwing")
+        CollectCoin = Remotes:FindFirstChild("CollectCoin")
+        Prestige = Remotes:FindFirstChild("Prestige")
+        ClickWateringCan = Remotes:FindFirstChild("ClickWateringCan")
+        ClaimWaterPurifier = Remotes:FindFirstChild("ClaimWaterPurifier")
+        WaterPurifier = Remotes:FindFirstChild("WaterPurifier")
+
+        -- ===== CHOPYOURTREE UTILITY FUNCTIONS =====
+        local function GetPlayerPlot()
+            local plotVal = LocalPlayer:FindFirstChild("Plot")
+            if plotVal and plotVal:IsA("ObjectValue") and plotVal.Value then
+                return plotVal.Value
+            end
+            
+            local plots = Workspace:FindFirstChild("Plots")
+            if plots then
+                for _, plot in ipairs(plots:GetChildren()) do
+                    if plot:GetAttribute("Plr") == LocalPlayer.Name then
+                        return plot
+                    end
+                end
+            end
+            return nil
+        end
+
+        local function GetMutations()
+            local mutations = {}
+            local seen = {}
+            local plot = GetPlayerPlot()
+            if plot then
+                for _, child in ipairs(plot:GetChildren()) do
+                    if child.Name == "TreeValue" and child:IsA("ObjectValue") then
+                        local tree = child.Value
+                        if tree and tree.Parent and not seen[tree] then
+                            seen[tree] = true
+                            table.insert(mutations, tree)
+                        end
+                    end
+                end
+            end
+            return mutations
+        end
+
+        local function GetWateringCans()
+            local cans = {}
+            local seen = {}
+            local plot = GetPlayerPlot()
+            if plot then
+                for _, desc in ipairs(plot:GetDescendants()) do
+                    if desc.Name == "WateringCanValue" and desc:IsA("ObjectValue") then
+                        local can = desc.Value
+                        if can and can.Parent and not seen[can] then
+                            seen[can] = true
+                            table.insert(cans, can)
+                        end
+                    end
+                end
+            end
+            return cans
+        end
+
+        local function GetStealableCans()
+            local stealable = {}
+            local myPlot = GetPlayerPlot()
+            if not myPlot then return stealable end
+            local plots = Workspace:FindFirstChild("Plots")
+            if not plots then return stealable end
+            for _, plot in ipairs(plots:GetChildren()) do
+                if plot ~= myPlot then
+                    for _, desc in ipairs(plot:GetDescendants()) do
+                        if desc.Name == "WateringCanValue" and desc:IsA("ObjectValue") then
+                            local can = desc.Value
+                            if can and can.Parent then
+                                local canSteal = can:GetAttribute("CanSteal") or can:GetAttribute("Stealable")
+                                if canSteal == nil or canSteal == true then
+                                    table.insert(stealable, can)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return stealable
+        end
+
+        local function CheckAndTeleportBack()
+            local plot = GetPlayerPlot()
+            local char = LocalPlayer.Character
+            
+            if plot and char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local treeSpawn = plot:FindFirstChild("PlotContents") and plot.PlotContents:FindFirstChild("TreeSpawn")
+                
+                if hrp and treeSpawn then
+                    local dist = (hrp.Position - treeSpawn.Position).Magnitude
+                    if dist >= 10 then
+                        hrp.CFrame = treeSpawn.CFrame
+                    end
+                end
+            end
+        end
+
+        local function GetMainTree()
+            local plot = GetPlayerPlot()
+            if plot then
+                local contents = plot:FindFirstChild("PlotContents")
+                if contents then
+                    return contents:FindFirstChild("Tree")
+                end
+            end
+            return nil
+        end
+
+        local function GetWateringCanLevels()
+            local levels = {}
+            local data = LocalPlayer:FindFirstChild("Data")
+            if data then
+                local tapCans = data:FindFirstChild("TapWateringCans")
+                if tapCans then
+                    for _, slot in ipairs(tapCans:GetChildren()) do
+                        local levelVal = slot:FindFirstChild("Level")
+                        if levelVal then
+                            levels[slot.Name] = levelVal.Value
+                        end
+                    end
+                end
+            end
+            return levels
+        end
+
+        local function GetHighestWaterLevel()
+            local highest = 0
+            for _, level in pairs(GetWateringCanLevels()) do
+                if level > highest then
+                    highest = level
+                end
+            end
+            return highest
+        end
+
+        local function ParseLevelText(text)
+            if type(text) ~= "string" then return nil end
+            -- Accept formats like: "Level 8", "LEVEL 8", "8", "Level: 8"
+            local num = text:match("(%d+)")
+            return num and tonumber(num) or nil
+        end
+
+        local function GetObjectLevelNumber(obj)
+            if not obj then return nil end
+            if obj:IsA("NumberValue") or obj:IsA("IntValue") then
+                return obj.Value
+            end
+            if obj:IsA("StringValue") then
+                return ParseLevelText(obj.Value)
+            end
+            if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                return ParseLevelText(obj.Text)
+            end
+            if obj.GetAttribute then
+                local attr = obj:GetAttribute("Level")
+                if type(attr) == "number" then
+                    return attr
+                end
+                if type(attr) == "string" then
+                    return ParseLevelText(attr)
+                end
+            end
+            return nil
+        end
+
+        local function GetCanLevel(can)
+            -- Preferred: numeric attribute/value on the can itself.
+            local direct = GetObjectLevelNumber(can)
+            if type(direct) == "number" then
+                return direct
+            end
+
+            -- Fallback: UI text like can.LevelBar.Level = "Level 8".
+            local levelBar = can:FindFirstChild("LevelBar", true)
+            if levelBar then
+                local levelObj = levelBar:FindFirstChild("Level")
+                local parsed = GetObjectLevelNumber(levelObj)
+                if type(parsed) == "number" then
+                    return parsed
+                end
+            end
+
+            -- Last resort: any descendant named "Level".
+            local anyLevel = can:FindFirstChild("Level", true)
+            local parsed = GetObjectLevelNumber(anyLevel)
+            if type(parsed) == "number" then
+                return parsed
+            end
+
+            return 0
+        end
+
+        local function ShouldAutoWater()
+            return GetHighestWaterLevel() >= Config.WaterLevelThreshold
+        end
+
+        local function GetLowestLevelCanSlot()
+            local lowestSlot, lowestLevel = nil, 999
+            local data = LocalPlayer:FindFirstChild("Data")
+            if data then
+                local tapCans = data:FindFirstChild("TapWateringCans")
+                if tapCans then
+                    for _, slot in ipairs(tapCans:GetChildren()) do
+                        local levelVal = slot:FindFirstChild("Level")
+                        if levelVal and levelVal.Value < lowestLevel then
+                            lowestLevel = levelVal.Value
+                            lowestSlot = tonumber(slot.Name)
+                        end
+                    end
+                end
+            end
+            return lowestSlot, lowestLevel
+        end
+
+        local function IsPurifierEmpty()
+            local plot = GetPlayerPlot()
+            if plot then
+                local contents = plot:FindFirstChild("PlotContents")
+                if contents then
+                    local purifier = contents:FindFirstChild("Water Purifier")
+                    if purifier then
+                        return not (purifier:FindFirstChild("WateringCan") or purifier:FindFirstChild("Can"))
+                    end
+                end
+            end
+            return true
+        end
+
+        local function GetCoinsValue()
+            local ls = LocalPlayer:FindFirstChild("leaderstats")
+            if ls then
+                local coins = ls:FindFirstChild("💵 Coins")
+                if coins then return tostring(coins.Value) end
+            end
+            return "0"
+        end
+
+        local function GetPrestigesValue()
+            local ls = LocalPlayer:FindFirstChild("leaderstats")
+            if ls then
+                local prestiges = ls:FindFirstChild("👑 Prestiges")
+                if prestiges then return prestiges.Value end
+            end
+            return 0
+        end
+
+        local function HasWateringCans()
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local char = LocalPlayer.Character
+            if backpack then
+                for _, item in ipairs(backpack:GetChildren()) do
+                    local name = item.Name:lower()
+                    if name:find("water") or name:find("can") then
+                        return true
+                    end
+                end
+            end
+            if char then
+                for _, item in ipairs(char:GetChildren()) do
+                    if item:IsA("Tool") then
+                        local name = item.Name:lower()
+                        if name:find("water") or name:find("can") then
+                            return true
+                        end
+                    end
+                end
+            end
+            return false
+        end
+
+        local function HasAxe()
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local char = LocalPlayer.Character
+            
+            if backpack and backpack:FindFirstChild("Axe") then
+                return true
+            end
+            
+            if char and char:FindFirstChild("Axe") then
+                return true
+            end
+            
+            return false
+        end
+
+        local function EquipAxe()
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local char = LocalPlayer.Character
+            if not char then return end
+
+            if char:FindFirstChild("Axe") then return end
+
+            local axe = backpack and backpack:FindFirstChild("Axe")
+            if axe then
+                pcall(function()
+                    axe.Parent = char
+                end)
+            end
+        end
+
+        local function GetBackpackItemCount()
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            if backpack then
+                return #backpack:GetChildren()
+            end
+            return 0
+        end
+
+        local function PlaceWaterCanOnTree()
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local char = LocalPlayer.Character
+            if not backpack or not char then return end
+
+            if GetBackpackItemCount() > 1 then
+                PressKey(Enum.KeyCode.Two)
+                task.wait(0.25)
+
+                local tree = GetMainTree()
+                if tree and ClickWateringCan then
+                    pcall(function() ClickWateringCan:FireServer(tree) end)
+                elseif tree then
+                    ClickMouse()
+                end
+            end
+        end
+
+        local HotbarKeys = {
+            Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four,
+            Enum.KeyCode.Five, Enum.KeyCode.Six, Enum.KeyCode.Seven,
+            Enum.KeyCode.Eight, Enum.KeyCode.Nine,
+        }
+
+        local function TapTree()
+            if not TapButtonClick then return end
+            local plot = GetPlayerPlot()
+            if plot then
+                pcall(function() TapButtonClick:FireServer(plot) end)
+            end
+        end
+
+        local function HitMutation(mutation)
+            if not mutation or not mutation.Parent then return end
+            if TreeClick then
+                pcall(function() TreeClick:InvokeServer(mutation) end)
+            end
+            if AxeSwing then
+                pcall(function() AxeSwing:FireServer() end)
+            end
+        end
+
+        local function HitAllMutations()
+            CheckAndTeleportBack()
+            EquipAxe()
+            PlaceWaterCanOnTree()
+            local mutations = GetMutations()
+            for _, mutation in ipairs(mutations) do
+                if not Config.AutoMutations or not State.Running then break end
+                if not HasAxe() then EquipAxe() end
+                HitMutation(mutation)
+                task.wait(TIMING.MUTATION_HIT_DELAY)
+            end
+        end
+
+        local function CollectAllCoins()
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+            local originalCFrame = root.CFrame
+            local orbsFolder = Workspace:FindFirstChild("Orbs")
+            if orbsFolder then
+                for _, coin in ipairs(orbsFolder:GetChildren()) do
+                    if not Config.AutoCollectCoins or not State.Running then break end
+                    if coin and coin.Parent and coin:IsA("BasePart") and coin:GetAttribute("CanCollect") then
+                        pcall(function() root.CFrame = coin.CFrame end)
+                        if firetouchinterest then
+                            pcall(function()
+                                firetouchinterest(root, coin, 0)
+                                firetouchinterest(root, coin, 1)
+                            end)
+                        end
+                        if CollectCoin then
+                            pcall(function() CollectCoin:FireServer(coin) end)
+                        end
+                        task.wait(TIMING.COIN_COLLECT_DELAY)
+                    end
+                end
+            end
+            pcall(function() root.CFrame = originalCFrame end)
+        end
+
+        local function UseCans()
+            if State.UsingCans then return end
+            State.UsingCans = true
+            if not HasWateringCans() then
+                EquipAxe()
+                State.UsingCans = false
+                return
+            end
+            for _, keyCode in ipairs(HotbarKeys) do
+                if not Config.AutoUseCans or not State.Running then break end
+                PressKey(keyCode)
+                task.wait(TIMING.USE_CANS_KEY_DELAY)
+                ClickMouse()
+                task.wait(TIMING.USE_CANS_CLICK_DELAY)
+            end
+            EquipAxe()
+            State.UsingCans = false
+        end
+
+        local function PickupCans()
+            if State.PickingUpCans then return end
+            State.PickingUpCans = true
+            local cans = GetWateringCans()
+            if #cans == 0 then
+                PressKey(Enum.KeyCode.One)
+                State.PickingUpCans = false
+                return
+            end
+            for _, can in ipairs(cans) do
+                if not Config.AutoPickupCans or not State.Running then break end
+                local canLevel = GetCanLevel(can)
+                if canLevel < Config.WaterLevelThreshold then
+                    continue
+                end
+                if ClickWateringCan then
+                    pcall(function() ClickWateringCan:FireServer(can) end)
+                end
+                task.wait(TIMING.PICKUP_CANS_DELAY)
+            end
+            local tree = GetMainTree()
+            if tree and ClickWateringCan then
+                pcall(function() ClickWateringCan:FireServer(tree) end)
+            end
+            local plot = GetPlayerPlot()
+            if plot and ClickWateringCan then
+                pcall(function() ClickWateringCan:FireServer(plot) end)
+            end
+            PressKey(Enum.KeyCode.One)
+            State.PickingUpCans = false
+        end
+
+        local function ClaimPurifier()
+            if ClaimWaterPurifier then
+                pcall(function() ClaimWaterPurifier:InvokeServer() end)
+            end
+        end
+
+        local function FillPurifier()
+            local slot, level = GetLowestLevelCanSlot()
+            if slot and level < 100 and WaterPurifier then
+                pcall(function() WaterPurifier:InvokeServer(slot) end)
+            end
+        end
+
+        local function DoPrestige()
+            if Prestige then
+                pcall(function() Prestige:InvokeServer() end)
+            end
+        end
+
+        local function StealCan(can)
+            if not can or not can.Parent then return end
+            if ClickWateringCan then
+                pcall(function() ClickWateringCan:FireServer(can) end)
+            end
+        end
+
+        local function StealAllCans()
+            local cans = GetStealableCans()
+            for _, can in ipairs(cans) do
+                if not Config.AutoSteal or not State.Running then break end
+                StealCan(can)
+                task.wait(TIMING.STEAL_DELAY)
+            end
+            return #cans
+        end
+
+        -- ===== CHOPYOURTREE AUTOMATION FUNCTIONS =====
+        function GameFunctions.StartAutoTap()
+            if State.Tapping then return end
+            State.Tapping = true
+            for i = 1, Config.TapThreads do
+                Threads["Tap_" .. i] = task.spawn(function()
+                    while Config.AutoTap and State.Running do
+                        TapTree()
+                        task.wait(TIMING.TAP_SPEED)
+                    end
+                end)
+            end
+            Threads["TapMonitor"] = task.spawn(function()
+                while Config.AutoTap and State.Running do
+                    task.wait(0.1)
+                end
+                State.Tapping = false
+            end)
+        end
+
+        function GameFunctions.StopAutoTap()
+            Config.AutoTap = false
+            for i = 1, Config.TapThreads do
+                SafeCancel("Tap_" .. i)
+            end
+            SafeCancel("TapMonitor")
+            State.Tapping = false
+        end
+
+        function GameFunctions.StartAutoMutations()
+            if State.HittingTrees then return end
+            State.HittingTrees = true
+            Threads["Mutations"] = task.spawn(function()
+                while Config.AutoMutations and State.Running do
+                    HitAllMutations()
+                    task.wait(TIMING.MUTATION_LOOP_DELAY)
+                end
+                State.HittingTrees = false
+            end)
+        end
+
+        function GameFunctions.StopAutoMutations()
+            Config.AutoMutations = false
+            SafeCancel("Mutations")
+            State.HittingTrees = false
+        end
+
+        function GameFunctions.StartAutoCollect()
+            if State.CollectingCoins then return end
+            State.CollectingCoins = true
+            Threads["Collect"] = task.spawn(function()
+                while Config.AutoCollectCoins and State.Running do
+                    CollectAllCoins()
+                    task.wait(TIMING.COIN_LOOP_DELAY)
+                end
+                State.CollectingCoins = false
+            end)
+        end
+
+        function GameFunctions.StopAutoCollect()
+            Config.AutoCollectCoins = false
+            SafeCancel("Collect")
+            State.CollectingCoins = false
+        end
+
+        function GameFunctions.StartAutoPrestige()
+            if State.Prestiging then return end
+            State.Prestiging = true
+            Threads["Prestige"] = task.spawn(function()
+                while Config.AutoPrestige and State.Running do
+                    DoPrestige()
+                    task.wait(TIMING.PRESTIGE_INTERVAL)
+                end
+                State.Prestiging = false
+            end)
+        end
+
+        function GameFunctions.StopAutoPrestige()
+            Config.AutoPrestige = false
+            SafeCancel("Prestige")
+            State.Prestiging = false
+        end
+
+        function GameFunctions.StartAutoUseCans()
+            Threads["UseCans"] = task.spawn(function()
+                while Config.AutoUseCans and State.Running do
+                    if ShouldAutoWater() then
+                        task.spawn(UseCans)
+                    end
+                    task.wait(TIMING.USE_CANS_INTERVAL)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoUseCans()
+            Config.AutoUseCans = false
+            SafeCancel("UseCans")
+        end
+
+        function GameFunctions.StartAutoPickupCans()
+            Threads["PickupCans"] = task.spawn(function()
+                while Config.AutoPickupCans and State.Running do
+                    if ShouldAutoWater() then
+                        task.spawn(PickupCans)
+                    end
+                    task.wait(TIMING.PICKUP_CANS_INTERVAL)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoPickupCans()
+            Config.AutoPickupCans = false
+            SafeCancel("PickupCans")
+        end
+
+        function GameFunctions.StartAutoClaimPurifier()
+            Threads["ClaimPurifier"] = task.spawn(function()
+                while Config.AutoClaimPurifier and State.Running do
+                    ClaimPurifier()
+                    task.wait(TIMING.CLAIM_PURIFIER_INTERVAL)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoClaimPurifier()
+            Config.AutoClaimPurifier = false
+            SafeCancel("ClaimPurifier")
+        end
+
+        function GameFunctions.StartAutoFillPurifier()
+            Threads["FillPurifier"] = task.spawn(function()
+                while Config.AutoFillPurifier and State.Running do
+                    if IsPurifierEmpty() then
+                        FillPurifier()
+                        task.wait(TIMING.FILL_PURIFIER_DELAY)
+                    end
+                    task.wait(TIMING.FILL_PURIFIER_INTERVAL)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoFillPurifier()
+            Config.AutoFillPurifier = false
+            SafeCancel("FillPurifier")
+        end
+
+        function GameFunctions.StartAutoSteal()
+            if State.Stealing then return end
+            State.Stealing = true
+            Threads["Steal"] = task.spawn(function()
+                while Config.AutoSteal and State.Running do
+                    local stolen = StealAllCans()
+                    task.wait(TIMING.STEAL_LOOP_INTERVAL)
+                end
+                State.Stealing = false
+            end)
+        end
+
+        function GameFunctions.StopAutoSteal()
+            Config.AutoSteal = false
+            SafeCancel("Steal")
+            State.Stealing = false
+        end
+
+        local function StartSpeedHack()
+            SafeDisconnect("SpeedHack")
+            Connections.SpeedHack = RunService.Heartbeat:Connect(function()
+                if Config.SpeedHack and State.Running then
+                    SetSpeed(Config.SpeedAmount)
+                end
+            end)
+        end
+
+        local function StopSpeedHack()
+            Config.SpeedHack = false
+            SafeDisconnect("SpeedHack")
+            SetSpeed(16)
+        end
+
+    end
+
+    -- ===== 99 NIGHTS IN THE FOREST GAME LOGIC =====
+    local GAME_HUB_ID = 79546208627805
+    local GAME_ID = 126509999114328
+    
+    if CurrentGameID == GAME_ID or game.GameId == 7326934954 then
+        Config = {
+            AutoDays = false,
+            AutoKillBunny = false,
+        }
+
+        State = {
+            Running = true,
+        }
+    end
+
+    -- ===== TSUNAMI BRAINROT GAME LOGIC =====
+    if CurrentGameID == TSUNAMIBRAINROT_ID then
+        local reps = ReplicatedStorage
+        local rf = reps:WaitForChild("RemoteFunctions", 10)
+        
+        if not rf then
+            warn("[TsunamiBrainrot] RemoteFunctions not found")
+        end
+
+        Config = {
+            AutoCollectMoney = false,
+            AutoUpgradeSpeed = false,
+            AutoUpgradeCarry = false,
+            AutoRebirth = false,
+            AutoSellAll = false,
+            AutoDeleteTsunami = false,
+            InstantPrompt = false,
+            SpeedUpgradeAmount = 5,
+        }
+
+        State = {
+            Running = true,
+            CollectingMoney = false,
+            UpgradingSpeed = false,
+            UpgradingCarry = false,
+            Rebirthing = false,
+            SellingSell = false,
+        }
+
+        -- Get player's base
+        local function getbase()
+            for _, v in pairs(workspace.Bases:GetChildren()) do
+                if v:IsA('Model') and v:GetAttribute('Holder') == LocalPlayer.UserId then 
+                    return v 
+                end
+            end
+            return nil
+        end
+
+        -- Teleport to home
+        local function home()
+            local base = getbase()
+            if base and base:FindFirstChild("Home") and LocalPlayer.Character then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = base.Home.CFrame
+            end
+        end
+
+        -- Optimize proximity prompts
+        local function optimizePrompts()
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("ProximityPrompt") then
+                    v.HoldDuration = 0
+                    v.MaxActivationDistance = 20
+                end
+            end
+        end
+
+        -- Clear tsunami
+        local function clearTsunami()
+            local at = workspace:FindFirstChild("ActiveTsunamis")
+            if at then 
+                at:ClearAllChildren() 
+            end
+        end
+
+        -- Get plot ID
+        local function getPlotID()
+            for i,v in pairs(workspace.Bases:GetChildren()) do
+                if v:FindFirstChild("Title") then
+                    local titleGui = v.Title:FindFirstChild("TitleGui")
+                    if titleGui and titleGui:FindFirstChild("Frame") then
+                        local playerName = titleGui.Frame:FindFirstChild("PlayerName")
+                        if playerName and playerName.Text == LocalPlayer.Name then
+                            return v.Name
+                        end
+                    end
+                end
+            end
+            return nil
+        end
+
+        -- Collect money from plots
+        local function CollectMoney()
+            local plotID = getPlotID()
+            if not plotID then return end
+            
+            local packages = reps:FindFirstChild("Packages")
+            if packages then
+                local net = packages:FindFirstChild("Net")
+                if net then
+                    local plotAction = net:FindFirstChild("RF/Plot.PlotAction")
+                    if plotAction then
+                        for i = 1, 30 do
+                            local args = {
+                                "Collect Money",
+                                plotID,
+                                tostring(i)
+                            }
+                            local success, err = pcall(function()
+                                plotAction:InvokeServer(unpack(args))
+                            end)
+                            if not success and string.find(tostring(err), "530") then
+                                warn("Rate limited, waiting longer...")
+                                task.wait(2)
+                            end
+                            task.wait(0.1) -- Increased from 0.05 to 0.1
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Upgrade speed
+        local function UpgradeSpeed()
+            if rf and rf:FindFirstChild("UpgradeSpeed") then
+                pcall(function()
+                    rf.UpgradeSpeed:InvokeServer(Config.SpeedUpgradeAmount)
+                end)
+            end
+        end
+
+        -- Upgrade carry
+        local function UpgradeCarry()
+            if rf and rf:FindFirstChild("UpgradeCarry") then
+                pcall(function()
+                    rf.UpgradeCarry:InvokeServer()
+                end)
+            end
+        end
+
+        -- Rebirth
+        local function DoRebirth()
+            if rf and rf:FindFirstChild("Rebirth") then
+                pcall(function()
+                    rf.Rebirth:InvokeServer()
+                end)
+            end
+        end
+
+        -- Sell all
+        local function SellAll()
+            if rf and rf:FindFirstChild("SellAll") then
+                pcall(function()
+                    rf.SellAll:InvokeServer()
+                end)
+            end
+        end
+
+        -- Auto functions
+        function GameFunctions.StartAutoCollectMoney()
+            if State.CollectingMoney then return end
+            State.CollectingMoney = true
+            SafeCancel("CollectMoney")
+            Threads["CollectMoney"] = task.spawn(function()
+                while State.CollectingMoney and State.Running do
+                    pcall(CollectMoney)
+                    task.wait(5) -- Increased from 3 to 5 seconds between cycles
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoCollectMoney()
+            State.CollectingMoney = false
+            SafeCancel("CollectMoney")
+        end
+
+        function GameFunctions.StartAutoUpgradeSpeed()
+            if State.UpgradingSpeed then return end
+            State.UpgradingSpeed = true
+            SafeCancel("UpgradeSpeed")
+            Threads["UpgradeSpeed"] = task.spawn(function()
+                while State.UpgradingSpeed and State.Running do
+                    pcall(UpgradeSpeed)
+                    task.wait(0.1)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoUpgradeSpeed()
+            State.UpgradingSpeed = false
+            SafeCancel("UpgradeSpeed")
+        end
+
+        function GameFunctions.StartAutoUpgradeCarry()
+            if State.UpgradingCarry then return end
+            State.UpgradingCarry = true
+            SafeCancel("UpgradeCarry")
+            Threads["UpgradeCarry"] = task.spawn(function()
+                while State.UpgradingCarry and State.Running do
+                    pcall(UpgradeCarry)
+                    task.wait(0.1)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoUpgradeCarry()
+            State.UpgradingCarry = false
+            SafeCancel("UpgradeCarry")
+        end
+
+        function GameFunctions.StartAutoRebirth()
+            if State.Rebirthing then return end
+            State.Rebirthing = true
+            SafeCancel("Rebirth")
+            Threads["Rebirth"] = task.spawn(function()
+                while State.Rebirthing and State.Running do
+                    pcall(DoRebirth)
+                    task.wait(5)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoRebirth()
+            State.Rebirthing = false
+            SafeCancel("Rebirth")
+        end
+
+        function GameFunctions.StartAutoSellAll()
+            if State.SellingSell then return end
+            State.SellingSell = true
+            SafeCancel("SellAll")
+            Threads["SellAll"] = task.spawn(function()
+                while State.SellingSell and State.Running do
+                    pcall(SellAll)
+                    task.wait(0.5)
+                end
+            end)
+        end
+
+        function GameFunctions.StopAutoSellAll()
+            State.SellingSell = false
+            SafeCancel("SellAll")
+        end
+
+        -- Background tasks for world destruction
+        task.spawn(function()
+            while task.wait(0.1) do
+                if Config.AutoDeleteTsunami then 
+                    pcall(clearTsunami) 
+                end
+                if Config.InstantPrompt then 
+                    pcall(optimizePrompts) 
+                end
+            end
+        end)
+    end
+
+    -- ===== UI SYSTEM (INSIDE InitializeScript so it can access game functions) =====
+    local MainFrame, Library, Tween
+    do
+    local COLORS = {
+        Background = Color3.fromRGB(25, 25, 25),
+        Sidebar = Color3.fromRGB(20, 20, 20),
+        Element = Color3.fromRGB(35, 35, 35),
+        Hover = Color3.fromRGB(45, 45, 45),
+        Text = Color3.fromRGB(240, 240, 240),
+        SubText = Color3.fromRGB(150, 150, 150),
+        Accent = Color3.fromRGB(0, 160, 255), -- Trutel Blue
+        Stroke = Color3.fromRGB(50, 50, 50),
+        Glow = Color3.fromRGB(0, 180, 255)
+    }
+
+    Tween = function(obj, props, time, style, dir)
+        local info = TweenInfo.new(time or 0.3, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
+        local tween = TweenService:Create(obj, info, props)
+        tween:Play()
+        return tween
+    end
+
+    local function CreateRipple(btn)
+        spawn(function()
+            local mouse = LocalPlayer:GetMouse()
+            local x = mouse.X - btn.AbsolutePosition.X
+            local y = mouse.Y - btn.AbsolutePosition.Y
+            local circle = Instance.new("ImageLabel")
+            circle.Name = "Ripple"
+            circle.Parent = btn
+            circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            circle.BackgroundTransparency = 1
+            circle.Image = "rbxassetid://266543268"
+            circle.ImageColor3 = Color3.fromRGB(255, 255, 255)
+            circle.ImageTransparency = 0.8
+            circle.Position = UDim2.new(0, x, 0, y)
+            circle.Size = UDim2.new(0, 0, 0, 0)
+            circle.AnchorPoint = Vector2.new(0.5, 0.5)
+            circle.ZIndex = 10
+            local size = math.max(btn.AbsoluteSize.X, btn.AbsoluteSize.Y) * 2.5
+            Tween(circle, {Size = UDim2.new(0, size, 0, size), ImageTransparency = 1}, 0.5)
+            wait(0.5)
+            circle:Destroy()
+        end)
+    end
+
+    -- Cleanup
+    if game.CoreGui:FindFirstChild("TrutelHubV6") then
+        game.CoreGui.TrutelHubV6:Destroy()
+    end
+
+    -- === 3. GUI SETUP ===
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "TrutelHubV6"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    if not pcall(function() ScreenGui.Parent = game.CoreGui end) then ScreenGui.Parent = LocalPlayer.PlayerGui end
+
+    local NotificationHolder = Instance.new("Frame")
+    NotificationHolder.Name = "Notifications"
+    NotificationHolder.Size = UDim2.new(0, 300, 1, 0) 
+    NotificationHolder.Position = UDim2.new(1, -320, 1, -50) 
+    NotificationHolder.AnchorPoint = Vector2.new(0, 1) 
+    NotificationHolder.BackgroundTransparency = 1
+    NotificationHolder.Parent = ScreenGui
+
+    local NotifyLayout = Instance.new("UIListLayout")
+    NotifyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    NotifyLayout.Padding = UDim.new(0, 10)
+    NotifyLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    NotifyLayout.Parent = NotificationHolder
+
+    MainFrame = Instance.new("CanvasGroup")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 620, 0, 420)
+    MainFrame.Position = UDim2.new(0.5, -310, 0.5, -210)
+    MainFrame.BackgroundColor3 = COLORS.Background
+    MainFrame.GroupTransparency = 1
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Parent = ScreenGui
+
+    local UICorner = Instance.new("UICorner", MainFrame)
+    UICorner.CornerRadius = UDim.new(0, 14)
+    local UIStroke = Instance.new("UIStroke", MainFrame)
+    UIStroke.Color = COLORS.Stroke
+    UIStroke.Thickness = 2
+    UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Size = UDim2.new(0, 160, 1, 0)
+    Sidebar.BackgroundColor3 = COLORS.Sidebar
+    Sidebar.BorderSizePixel = 0
+    Sidebar.Parent = MainFrame
+
+    local Title = Instance.new("TextLabel")
+    Title.Text = "TRUTEL <font color='#00A0FF'>HUB</font>"
+    Title.RichText = true
+    Title.Size = UDim2.new(1, 0, 0, 60)
+    Title.BackgroundTransparency = 1
+    Title.TextColor3 = COLORS.Text
+    Title.Font = Enum.Font.GothamBlack
+    Title.TextSize = 20
+    Title.Parent = Sidebar
+
+    local TabHolder = Instance.new("ScrollingFrame")
+    TabHolder.Size = UDim2.new(1, 0, 1, -60)
+    TabHolder.Position = UDim2.new(0, 0, 0, 60)
+    TabHolder.BackgroundTransparency = 1
+    TabHolder.ScrollBarThickness = 0
+    TabHolder.Parent = Sidebar
+    
+    local ButtonsContainer = Instance.new("Frame")
+    ButtonsContainer.Size = UDim2.new(1, 0, 1, 0)
+    ButtonsContainer.BackgroundTransparency = 1
+    ButtonsContainer.Parent = TabHolder
+    
+    local TabList = Instance.new("UIListLayout")
+    TabList.SortOrder = Enum.SortOrder.LayoutOrder
+    TabList.Padding = UDim.new(0, 5)
+    TabList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    TabList.Parent = ButtonsContainer
+    
+    local TabTracker = Instance.new("Frame")
+    TabTracker.Size = UDim2.new(0, 3, 0, 30)
+    TabTracker.BackgroundColor3 = COLORS.Accent
+    TabTracker.Position = UDim2.new(0, 0, 0, 0)
+    TabTracker.Parent = TabHolder
+    Instance.new("UICorner", TabTracker).CornerRadius = UDim.new(1, 0)
+
+    local ContentArea = Instance.new("Frame")
+    ContentArea.Size = UDim2.new(1, -160, 1, 0)
+    ContentArea.Position = UDim2.new(0, 160, 0, 0)
+    ContentArea.BackgroundTransparency = 1
+    ContentArea.Parent = MainFrame
+
+    Library = {}
+    local FirstTab = nil
+    local TabCount = 0
+    local NotifCount = 0 
+
+    function Library:Notify(title, text, duration)
+        NotifCount = NotifCount + 1
+        local Notif = Instance.new("Frame")
+        Notif.Size = UDim2.new(0, 300, 0, 80)
+        Notif.BackgroundColor3 = COLORS.Background
+        Notif.BackgroundTransparency = 1
+        Notif.LayoutOrder = NotifCount
+        Notif.Parent = NotificationHolder
+        
+        local NCorner = Instance.new("UICorner", Notif)
+        NCorner.CornerRadius = UDim.new(0, 10)
+        local NStroke = Instance.new("UIStroke", Notif)
+        NStroke.Color = COLORS.Stroke
+        NStroke.Thickness = 2
+        NStroke.Transparency = 1
+        
+        local NTitle = Instance.new("TextLabel")
+        NTitle.Text = title
+        NTitle.Size = UDim2.new(1, -20, 0, 25)
+        NTitle.Position = UDim2.new(0, 15, 0, 10)
+        NTitle.BackgroundTransparency = 1
+        NTitle.TextColor3 = COLORS.Accent
+        NTitle.Font = Enum.Font.GothamBlack
+        NTitle.TextSize = 16
+        NTitle.TextXAlignment = Enum.TextXAlignment.Left
+        NTitle.TextTransparency = 1
+        NTitle.Parent = Notif
+        
+        local NText = Instance.new("TextLabel")
+        NText.Text = text
+        NText.Size = UDim2.new(1, -20, 0, 35)
+        NText.Position = UDim2.new(0, 15, 0, 35)
+        NText.BackgroundTransparency = 1
+        NText.TextColor3 = COLORS.SubText
+        NText.Font = Enum.Font.Gotham
+        NText.TextSize = 14
+        NText.TextXAlignment = Enum.TextXAlignment.Left
+        NText.TextWrapped = true
+        NText.TextTransparency = 1
+        NText.Parent = Notif
+        
+        local NBar = Instance.new("Frame")
+        NBar.Size = UDim2.new(0, 0, 0, 3)
+        NBar.Position = UDim2.new(0, 0, 1, -3)
+        NBar.BackgroundColor3 = COLORS.Accent
+        NBar.BorderSizePixel = 0
+        NBar.BackgroundTransparency = 1
+        NBar.Parent = Notif
+        
+        Tween(Notif, {Size = UDim2.new(0, 300, 0, 80), BackgroundTransparency = 0.1}, 0.5, Enum.EasingStyle.Back)
+        Tween(NStroke, {Transparency = 0}, 0.5)
+        Tween(NTitle, {TextTransparency = 0}, 0.5)
+        Tween(NText, {TextTransparency = 0}, 0.5)
+        Tween(NBar, {BackgroundTransparency = 0}, 0.5)
+        
+        Tween(NBar, {Size = UDim2.new(1, 0, 0, 3)}, duration or 3, Enum.EasingStyle.Linear)
+        
+        task.delay(duration or 3, function()
+            Tween(Notif, {BackgroundTransparency = 1, Size = UDim2.new(0, 300, 0, 0)}, 0.5)
+            Tween(NStroke, {Transparency = 1}, 0.5)
+            Tween(NTitle, {TextTransparency = 1}, 0.5)
+            Tween(NText, {TextTransparency = 1}, 0.5)
+            Tween(NBar, {BackgroundTransparency = 1}, 0.5)
+            wait(0.5)
+            Notif:Destroy()
+        end)
+    end
+
+    local ConfirmationFrame = Instance.new("Frame")
+    ConfirmationFrame.Size = UDim2.new(1, 0, 1, 0)
+    ConfirmationFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+    ConfirmationFrame.BackgroundTransparency = 1
+    ConfirmationFrame.Visible = false
+    ConfirmationFrame.ZIndex = 10
+    ConfirmationFrame.Parent = ScreenGui
+    
+    local ConfirmBox = Instance.new("Frame")
+    ConfirmBox.Size = UDim2.new(0, 0, 0, 0)
+    ConfirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ConfirmBox.BackgroundColor3 = COLORS.Background
+    ConfirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
+    ConfirmBox.Parent = ConfirmationFrame
+    ConfirmBox.ClipsDescendants = true 
+
+    Instance.new("UICorner", ConfirmBox).CornerRadius = UDim.new(0, 12)
+    local ConfStroke = Instance.new("UIStroke", ConfirmBox)
+    ConfStroke.Color = COLORS.Accent
+    ConfStroke.Thickness = 2
+    
+    local CTitle = Instance.new("TextLabel")
+    CTitle.Text = "CLOSE HUB"
+    CTitle.Size = UDim2.new(1, 0, 0, 40)
+    CTitle.Position = UDim2.new(0, 0, 0, 10)
+    CTitle.TextColor3 = COLORS.Text
+    CTitle.Font = Enum.Font.GothamBold
+    CTitle.TextSize = 18
+    CTitle.BackgroundTransparency = 1
+    CTitle.Parent = ConfirmBox
+    
+    local CText = Instance.new("TextLabel")
+    CText.Text = "Are you sure you want to quit?"
+    CText.Size = UDim2.new(1, 0, 0, 30)
+    CText.Position = UDim2.new(0, 0, 0, 45)
+    CText.TextColor3 = COLORS.SubText
+    CText.Font = Enum.Font.Gotham
+    CText.TextSize = 14
+    CText.BackgroundTransparency = 1
+    CText.Parent = ConfirmBox
+    
+    local BtnYes = Instance.new("TextButton")
+    BtnYes.Text = "Yes"
+    BtnYes.Size = UDim2.new(0, 100, 0, 35)
+    BtnYes.Position = UDim2.new(0, 30, 0, 90)
+    BtnYes.BackgroundColor3 = COLORS.Element
+    BtnYes.TextColor3 = Color3.fromRGB(255, 80, 80)
+    BtnYes.Font = Enum.Font.GothamBold
+    BtnYes.TextSize = 14
+    BtnYes.Parent = ConfirmBox
+    Instance.new("UICorner", BtnYes).CornerRadius = UDim.new(0, 6)
+    
+    local BtnNo = Instance.new("TextButton")
+    BtnNo.Text = "No"
+    BtnNo.Size = UDim2.new(0, 100, 0, 35)
+    BtnNo.Position = UDim2.new(1, -130, 0, 90)
+    BtnNo.BackgroundColor3 = COLORS.Element
+    BtnNo.TextColor3 = COLORS.Text
+    BtnNo.Font = Enum.Font.GothamBold
+    BtnNo.TextSize = 14
+    BtnNo.Parent = ConfirmBox
+    Instance.new("UICorner", BtnNo).CornerRadius = UDim.new(0, 6)
+
+    BtnNo.MouseButton1Click:Connect(function()
+        Tween(ConfirmationFrame, {BackgroundTransparency = 1}, 0.3)
+        Tween(ConfirmBox, {Size = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        wait(0.3)
+        ConfirmationFrame.Visible = false
+    end)
+    
+    BtnYes.MouseButton1Click:Connect(function()
+        Tween(ConfirmationFrame, {BackgroundTransparency = 1}, 0.2)
+        Tween(ConfirmBox, {Size = UDim2.new(0, 0, 0, 0)}, 0.2)
+        Tween(MainFrame, {Size = UDim2.new(0, 0, 0, 0), GroupTransparency = 1}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        Library:Notify("System", "UI Closed successfully.", 2)
+        wait(2)
+        ScreenGui:Destroy()
+    end)
+
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Size = UDim2.new(0, 40, 0, 40)
+    MinimizeBtn.Position = UDim2.new(1, -80, 0, 0)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Text = "−"
+    MinimizeBtn.TextColor3 = COLORS.SubText
+    MinimizeBtn.Font = Enum.Font.Gotham
+    MinimizeBtn.TextSize = 28
+    MinimizeBtn.Parent = ContentArea
+    
+    local isMinimized = false
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        if isMinimized then 
+            Tween(MainFrame, {Size = UDim2.new(0, 620, 0, 50)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+            MinimizeBtn.Text = "▲"
+        else 
+            Tween(MainFrame, {Size = UDim2.new(0, 620, 0, 420)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+            MinimizeBtn.Text = "−"
+        end
+    end)
+    
+    MinimizeBtn.MouseEnter:Connect(function()
+        Tween(MinimizeBtn, {TextColor3 = COLORS.Accent})
+    end)
+    MinimizeBtn.MouseLeave:Connect(function()
+        Tween(MinimizeBtn, {TextColor3 = COLORS.SubText})
+    end)
+
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Size = UDim2.new(0, 40, 0, 40)
+    CloseBtn.Position = UDim2.new(1, -40, 0, 0)
+    CloseBtn.BackgroundTransparency = 1
+    CloseBtn.Text = "×"
+    CloseBtn.TextColor3 = COLORS.SubText
+    CloseBtn.Font = Enum.Font.Gotham
+    CloseBtn.TextSize = 28
+    CloseBtn.Parent = ContentArea
+    
+    CloseBtn.MouseButton1Click:Connect(function()
+        ConfirmationFrame.Visible = true
+        Tween(ConfirmationFrame, {BackgroundTransparency = 0.5}, 0.3)
+        Tween(ConfirmBox, {Size = UDim2.new(0, 300, 0, 150)}, 0.4, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+    end)
+    
+    CloseBtn.MouseEnter:Connect(function()
+        Tween(CloseBtn, {TextColor3 = Color3.fromRGB(255, 80, 80)})
+    end)
+    CloseBtn.MouseLeave:Connect(function()
+        Tween(CloseBtn, {TextColor3 = COLORS.SubText})
+    end)
+
+    local dragging, dragStart, startPos
+    Sidebar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    
+    Sidebar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            Tween(MainFrame, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}, 0.05, Enum.EasingStyle.Linear)
+        end
+    end)
+
+    function Library:CreateTab(name, iconId)
+        TabCount = TabCount + 1
+        local MyIndex = TabCount
+        
+        local TabBtn = Instance.new("TextButton")
+        TabBtn.Size = UDim2.new(0, 140, 0, 40)
+        TabBtn.BackgroundTransparency = 1
+        TabBtn.Text = ""
+        TabBtn.LayoutOrder = MyIndex
+        TabBtn.Parent = ButtonsContainer
+        
+        local Icon = Instance.new("ImageLabel")
+        Icon.Size = UDim2.new(0, 20, 0, 20)
+        Icon.Position = UDim2.new(0, 10, 0.5, -10)
+        Icon.BackgroundTransparency = 1
+        Icon.Image = "rbxassetid://" .. tostring(iconId)
+        Icon.ImageColor3 = COLORS.SubText
+        Icon.Parent = TabBtn
+        
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -40, 1, 0)
+        Label.Position = UDim2.new(0, 40, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = name
+        Label.TextColor3 = COLORS.SubText
+        Label.Font = Enum.Font.GothamBold
+        Label.TextSize = 14
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = TabBtn
+        
+        local Page = Instance.new("ScrollingFrame")
+        Page.Size = UDim2.new(1, 0, 1, -50)
+        Page.Position = UDim2.new(0, 0, 0, 50)
+        Page.BackgroundTransparency = 1
+        Page.ScrollBarThickness = 2
+        Page.ScrollBarImageColor3 = COLORS.Accent
+        Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        Page.Visible = false
+        Page.Parent = ContentArea
+        
+        local PL = Instance.new("UIListLayout")
+        PL.Padding = UDim.new(0, 8)
+        PL.Parent = Page
+        
+        local PP = Instance.new("UIPadding")
+        PP.PaddingTop = UDim.new(0, 10)
+        PP.PaddingLeft = UDim.new(0, 20)
+        PP.PaddingRight = UDim.new(0, 20)
+        PP.Parent = Page
+
+        TabBtn.MouseButton1Click:Connect(function()
+            for _, t in pairs(ButtonsContainer:GetChildren()) do
+                if t:IsA("TextButton") then
+                    Tween(t.TextLabel, {TextColor3 = COLORS.SubText})
+                    Tween(t.ImageLabel, {ImageColor3 = COLORS.SubText})
+                end
+            end
+            for _, p in pairs(ContentArea:GetChildren()) do
+                if p:IsA("ScrollingFrame") then
+                    p.Visible = false
+                end
+            end
+            Tween(Label, {TextColor3 = COLORS.Text})
+            Tween(Icon, {ImageColor3 = COLORS.Text})
+            Page.Visible = true
+            local targetY = ((MyIndex - 1) * 45) + 5
+            Tween(TabTracker, {Position = UDim2.new(0, 0, 0, targetY)}, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+            for i, v in pairs(Page:GetChildren()) do
+                if v:IsA("Frame") or v:IsA("TextButton") then
+                    v.BackgroundTransparency = 1
+                    if v:FindFirstChild("TextLabel") then
+                        v.TextLabel.TextTransparency = 1
+                    end
+                    Tween(v, {BackgroundTransparency = 0}, 0.3 + (i * 0.05))
+                    if v:FindFirstChild("TextLabel") then
+                        Tween(v.TextLabel, {TextTransparency = 0}, 0.3 + (i * 0.05))
+                    end
+                end
+            end
+        end)
+
+        if FirstTab == nil then
+            FirstTab = TabBtn
+            Page.Visible = true
+            Label.TextColor3 = COLORS.Text
+            Icon.ImageColor3 = COLORS.Text
+            local targetY = ((MyIndex - 1) * 45) + 5
+            TabTracker.Position = UDim2.new(0, 0, 0, targetY)
+        end
+
+        local Elements = {}
+        
+        local function AddHoverEffect(obj)
+            local stroke = Instance.new("UIStroke", obj)
+            stroke.Color = COLORS.Glow
+            stroke.Thickness = 1.5
+            stroke.Transparency = 1
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            obj.MouseEnter:Connect(function()
+                Tween(stroke, {Transparency = 0, Color = COLORS.Accent})
+                Tween(obj, {BackgroundColor3 = COLORS.Hover})
+            end)
+            obj.MouseLeave:Connect(function()
+                Tween(stroke, {Transparency = 1})
+                Tween(obj, {BackgroundColor3 = COLORS.Element})
+            end)
+        end
+
+        function Elements:CreateButton(text, cb)
+            local B = Instance.new("TextButton")
+            B.Size = UDim2.new(1, 0, 0, 42)
+            B.BackgroundColor3 = COLORS.Element
+            B.Text = text
+            B.TextColor3 = COLORS.Text
+            B.Font = Enum.Font.GothamSemibold
+            B.TextSize = 14
+            B.AutoButtonColor = false
+            B.Parent = Page
+            Instance.new("UICorner", B).CornerRadius = UDim.new(0, 6)
+            AddHoverEffect(B)
+            B.MouseButton1Click:Connect(function()
+                CreateRipple(B)
+                local t = Tween(B, {Size = UDim2.new(1, -4, 0, 38)}, 0.1)
+                t.Completed:Wait()
+                Tween(B, {Size = UDim2.new(1, 0, 0, 42)}, 0.2, Enum.EasingStyle.Bounce)
+                pcall(cb)
+            end)
+        end
+
+        function Elements:CreateToggle(text, cb)
+            local T = Instance.new("TextButton")
+            T.Size = UDim2.new(1, 0, 0, 42)
+            T.BackgroundColor3 = COLORS.Element
+            T.Text = ""
+            T.AutoButtonColor = false
+            T.Parent = Page
+            Instance.new("UICorner", T).CornerRadius = UDim.new(0, 6)
+            AddHoverEffect(T)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(1, -50, 1, 0)
+            L.Position = UDim2.new(0, 15, 0, 0)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = T
+            
+            local S = Instance.new("Frame")
+            S.Size = UDim2.new(0, 40, 0, 20)
+            S.Position = UDim2.new(1, -50, 0.5, -10)
+            S.BackgroundColor3 = COLORS.Background
+            S.Parent = T
+            Instance.new("UICorner", S).CornerRadius = UDim.new(1, 0)
+            
+            local D = Instance.new("Frame")
+            D.Size = UDim2.new(0, 16, 0, 16)
+            D.Position = UDim2.new(0, 2, 0.5, -8)
+            D.BackgroundColor3 = COLORS.SubText
+            D.Parent = S
+            Instance.new("UICorner", D).CornerRadius = UDim.new(1, 0)
+            
+            local on = false
+            T.MouseButton1Click:Connect(function()
+                CreateRipple(T)
+                on = not on
+                if on then
+                    Tween(S, {BackgroundColor3 = COLORS.Accent})
+                    Tween(D, {Position = UDim2.new(1, -18, 0.5, -8), BackgroundColor3 = COLORS.Text}, 0.4, Enum.EasingStyle.Back)
+                else
+                    Tween(S, {BackgroundColor3 = COLORS.Background})
+                    Tween(D, {Position = UDim2.new(0, 2, 0.5, -8), BackgroundColor3 = COLORS.SubText}, 0.4, Enum.EasingStyle.Back)
+                end
+                pcall(cb, on)
+            end)
+        end
+
+        function Elements:CreateSlider(text, min, max, def, cb)
+            local F = Instance.new("Frame")
+            F.Size = UDim2.new(1, 0, 0, 60)
+            F.BackgroundColor3 = COLORS.Element
+            F.Parent = Page
+            Instance.new("UICorner", F).CornerRadius = UDim.new(0, 6)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(1, 0, 0, 25)
+            L.Position = UDim2.new(0, 15, 0, 5)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = F
+            
+            local V = Instance.new("TextBox")
+            V.Text = tostring(def)
+            V.Size = UDim2.new(0, 50, 0, 25)
+            V.Position = UDim2.new(1, -60, 0, 5)
+            V.BackgroundColor3 = COLORS.Background
+            V.TextColor3 = COLORS.Accent
+            V.Font = Enum.Font.GothamBold
+            V.TextSize = 14
+            V.Parent = F
+            Instance.new("UICorner", V).CornerRadius = UDim.new(0, 4)
+            
+            local MinL = Instance.new("TextLabel")
+            MinL.Text = tostring(min)
+            MinL.Size = UDim2.new(0, 30, 0, 15)
+            MinL.Position = UDim2.new(0, 15, 0, 42)
+            MinL.BackgroundTransparency = 1
+            MinL.TextColor3 = COLORS.SubText
+            MinL.Font = Enum.Font.Gotham
+            MinL.TextSize = 10
+            MinL.TextXAlignment = Enum.TextXAlignment.Left
+            MinL.Parent = F
+            
+            local MaxL = Instance.new("TextLabel")
+            MaxL.Text = tostring(max)
+            MaxL.Size = UDim2.new(0, 30, 0, 15)
+            MaxL.Position = UDim2.new(1, -45, 0, 42)
+            MaxL.BackgroundTransparency = 1
+            MaxL.TextColor3 = COLORS.SubText
+            MaxL.Font = Enum.Font.Gotham
+            MaxL.TextSize = 10
+            MaxL.TextXAlignment = Enum.TextXAlignment.Right
+            MaxL.Parent = F
+
+            local B = Instance.new("Frame")
+            B.Size = UDim2.new(1, -30, 0, 6)
+            B.Position = UDim2.new(0, 15, 0, 35)
+            B.BackgroundColor3 = COLORS.Background
+            B.Parent = F
+            Instance.new("UICorner", B).CornerRadius = UDim.new(1, 0)
+            
+            local Fill = Instance.new("Frame")
+            Fill.Size = UDim2.new((def - min) / (max - min), 0, 1, 0)
+            Fill.BackgroundColor3 = COLORS.Accent
+            Fill.Parent = B
+            Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+            
+            local BTN = Instance.new("TextButton")
+            BTN.Size = UDim2.new(1, 0, 1, 0)
+            BTN.BackgroundTransparency = 1
+            BTN.Text = ""
+            BTN.Parent = B
+            
+            local stroke = Instance.new("UIStroke", F)
+            stroke.Color = COLORS.Glow
+            stroke.Thickness = 1.5
+            stroke.Transparency = 1
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            BTN.MouseEnter:Connect(function()
+                Tween(stroke, {Transparency = 0, Color = COLORS.Accent})
+            end)
+            BTN.MouseLeave:Connect(function()
+                Tween(stroke, {Transparency = 1})
+            end)
+
+            local function Update(val)
+                val = math.clamp(val, min, max)
+                local p = (val - min) / (max - min)
+                Tween(Fill, {Size = UDim2.new(p, 0, 1, 0)}, 0.1)
+                V.Text = tostring(math.floor(val))
+                pcall(cb, val)
+            end
+
+            local function UpdFromMouse(i)
+                local p = math.clamp((i.Position.X - B.AbsolutePosition.X) / B.AbsoluteSize.X, 0, 1)
+                local val = math.floor(min + ((max - min) * p))
+                Update(val)
+            end
+
+            V.FocusLost:Connect(function()
+                local n = tonumber(V.Text)
+                if n then
+                    Update(n)
+                else
+                    V.Text = tostring(def)
+                end
+            end)
+
+            local d = false
+            BTN.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    d = true
+                    UpdFromMouse(i)
+                end
+            end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    d = false
+                end
+            end)
+            UserInputService.InputChanged:Connect(function(i)
+                if d and i.UserInputType == Enum.UserInputType.MouseMovement then
+                    UpdFromMouse(i)
+                end
+            end)
+        end
+
+        function Elements:CreateDropdown(text, options, cb)
+            local F = Instance.new("Frame")
+            F.Size = UDim2.new(1, 0, 0, 42)
+            F.BackgroundColor3 = COLORS.Element
+            F.Parent = Page
+            Instance.new("UICorner", F).CornerRadius = UDim.new(0, 6)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(0.7, 0, 1, 0)
+            L.Position = UDim2.new(0, 15, 0, 0)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = F
+            
+            local selected = {}
+            
+            local DBtn = Instance.new("TextButton")
+            DBtn.Size = UDim2.new(0, 100, 1, 0)
+            DBtn.Position = UDim2.new(1, -110, 0, 0)
+            DBtn.BackgroundColor3 = COLORS.Background
+            DBtn.TextColor3 = COLORS.SubText
+            DBtn.Font = Enum.Font.GothamBold
+            DBtn.TextSize = 12
+            DBtn.Text = "Select"
+            DBtn.AutoButtonColor = false
+            DBtn.Parent = F
+            Instance.new("UICorner", DBtn).CornerRadius = UDim.new(0, 4)
+            
+            local dropdownOpen = false
+            local dropdownFrame = Instance.new("ScrollingFrame")
+            dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+            dropdownFrame.Position = UDim2.new(0, 0, 1, 5)
+            dropdownFrame.BackgroundColor3 = COLORS.Element
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ScrollBarThickness = 8
+            dropdownFrame.ScrollBarImageColor3 = COLORS.Accent
+            dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            dropdownFrame.ClipsDescendants = true
+            dropdownFrame.Visible = false
+            dropdownFrame.Parent = F
+            Instance.new("UICorner", dropdownFrame).CornerRadius = UDim.new(0, 6)
+            
+            local dropdownList = Instance.new("UIListLayout")
+            dropdownList.SortOrder = Enum.SortOrder.LayoutOrder
+            dropdownList.Padding = UDim.new(0, 3)
+            dropdownList.Parent = dropdownFrame
+            
+            local dropdownPadding = Instance.new("UIPadding")
+            dropdownPadding.PaddingTop = UDim.new(0, 5)
+            dropdownPadding.PaddingLeft = UDim.new(0, 5)
+            dropdownPadding.PaddingRight = UDim.new(0, 5)
+            dropdownPadding.PaddingBottom = UDim.new(0, 5)
+            dropdownPadding.Parent = dropdownFrame
+            
+            local function UpdateDropdown()
+                local count = 0
+                for _ in pairs(selected) do count = count + 1 end
+                if count == 0 then
+                    DBtn.Text = "Select"
+                    Tween(DBtn, {TextColor3 = COLORS.SubText})
+                else
+                    DBtn.Text = count .. " Selected"
+                    Tween(DBtn, {TextColor3 = COLORS.Accent})
+                end
+                pcall(cb, selected)
+            end
+            
+            local function CreateCheckbox(option)
+                local Check = Instance.new("TextButton")
+                Check.Size = UDim2.new(1, -10, 0, 28)
+                Check.BackgroundColor3 = COLORS.Background
+                Check.TextColor3 = COLORS.Text
+                Check.Font = Enum.Font.GothamSemibold
+                Check.TextSize = 12
+                Check.AutoButtonColor = false
+                Check.Parent = dropdownFrame
+                Instance.new("UICorner", Check).CornerRadius = UDim.new(0, 4)
+                
+                local isChecked = false
+                local checkbox = Instance.new("Frame")
+                checkbox.Size = UDim2.new(0, 16, 0, 16)
+                checkbox.Position = UDim2.new(0, 5, 0.5, -8)
+                checkbox.BackgroundColor3 = COLORS.Stroke
+                checkbox.Parent = Check
+                Instance.new("UICorner", checkbox).CornerRadius = UDim.new(0, 3)
+                
+                local checkmark = Instance.new("TextLabel")
+                checkmark.Size = UDim2.new(1, 0, 1, 0)
+                checkmark.BackgroundTransparency = 1
+                checkmark.Text = "✓"
+                checkmark.TextColor3 = COLORS.Accent
+                checkmark.Font = Enum.Font.GothamBlack
+                checkmark.TextSize = 14
+                checkmark.Visible = false
+                checkmark.Parent = checkbox
+                
+                local label = Instance.new("TextLabel")
+                label.Text = option
+                label.Size = UDim2.new(1, -30, 1, 0)
+                label.Position = UDim2.new(0, 25, 0, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = COLORS.Text
+                label.Font = Enum.Font.Gotham
+                label.TextSize = 12
+                label.TextXAlignment = Enum.TextXAlignment.Left
+                label.Parent = Check
+                
+                Check.MouseButton1Click:Connect(function()
+                    isChecked = not isChecked
+                    if isChecked then
+                        selected[option] = true
+                        Tween(checkbox, {BackgroundColor3 = COLORS.Accent})
+                        checkmark.Visible = true
+                    else
+                        selected[option] = nil
+                        Tween(checkbox, {BackgroundColor3 = COLORS.Stroke})
+                        checkmark.Visible = false
+                    end
+                    UpdateDropdown()
+                end)
+                
+                Check.MouseEnter:Connect(function()
+                    Tween(Check, {BackgroundColor3 = COLORS.Hover})
+                end)
+                Check.MouseLeave:Connect(function()
+                    Tween(Check, {BackgroundColor3 = COLORS.Background})
+                end)
+            end
+            
+            for _, option in ipairs(options) do
+                CreateCheckbox(option)
+            end
+            
+            DBtn.MouseButton1Click:Connect(function()
+                dropdownOpen = not dropdownOpen
+                if dropdownOpen then
+                    dropdownFrame.Visible = true
+                    local itemCount = #options
+                    local height = math.min(itemCount * 33, 200)
+                    dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, itemCount * 33 + 10)
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, height)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                    
+                    -- Set dropdown above other elements
+                    F.ZIndex = 2
+                    dropdownFrame.ZIndex = 3
+                else
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                    task.wait(0.3)
+                    dropdownFrame.Visible = false
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                    F.ZIndex = 1
+                    dropdownFrame.ZIndex = 1
+                end
+            end)
+            
+            DBtn.MouseEnter:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                end
+            end)
+            DBtn.MouseLeave:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                end
+            end)
+        end
+        
+        function Elements:CreateSingleDropdown(text, options, cb)
+            local F = Instance.new("Frame")
+            F.Size = UDim2.new(1, 0, 0, 42)
+            F.BackgroundColor3 = COLORS.Element
+            F.Parent = Page
+            Instance.new("UICorner", F).CornerRadius = UDim.new(0, 6)
+            
+            local L = Instance.new("TextLabel")
+            L.Text = text
+            L.Size = UDim2.new(0.7, 0, 1, 0)
+            L.Position = UDim2.new(0, 15, 0, 0)
+            L.BackgroundTransparency = 1
+            L.TextColor3 = COLORS.Text
+            L.Font = Enum.Font.GothamSemibold
+            L.TextSize = 14
+            L.TextXAlignment = Enum.TextXAlignment.Left
+            L.Parent = F
+            
+            local selected = nil
+            
+            local DBtn = Instance.new("TextButton")
+            DBtn.Size = UDim2.new(0, 100, 1, 0)
+            DBtn.Position = UDim2.new(1, -110, 0, 0)
+            DBtn.BackgroundColor3 = COLORS.Background
+            DBtn.TextColor3 = COLORS.SubText
+            DBtn.Font = Enum.Font.GothamBold
+            DBtn.TextSize = 12
+            DBtn.Text = "Select"
+            DBtn.AutoButtonColor = false
+            DBtn.Parent = F
+            Instance.new("UICorner", DBtn).CornerRadius = UDim.new(0, 4)
+            
+            local dropdownOpen = false
+            local dropdownFrame = Instance.new("ScrollingFrame")
+            dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+            dropdownFrame.Position = UDim2.new(0, 0, 1, 5)
+            dropdownFrame.BackgroundColor3 = COLORS.Element
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ScrollBarThickness = 8
+            dropdownFrame.ScrollBarImageColor3 = COLORS.Accent
+            dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+            dropdownFrame.ClipsDescendants = true
+            dropdownFrame.Visible = false
+            dropdownFrame.Parent = F
+            Instance.new("UICorner", dropdownFrame).CornerRadius = UDim.new(0, 6)
+            
+            local dropdownList = Instance.new("UIListLayout")
+            dropdownList.SortOrder = Enum.SortOrder.LayoutOrder
+            dropdownList.Padding = UDim.new(0, 3)
+            dropdownList.Parent = dropdownFrame
+            
+            local dropdownPadding = Instance.new("UIPadding")
+            dropdownPadding.PaddingTop = UDim.new(0, 5)
+            dropdownPadding.PaddingLeft = UDim.new(0, 5)
+            dropdownPadding.PaddingRight = UDim.new(0, 5)
+            dropdownPadding.PaddingBottom = UDim.new(0, 5)
+            dropdownPadding.Parent = dropdownFrame
+            
+            local function UpdateDropdown()
+                if selected then
+                    DBtn.Text = selected
+                    Tween(DBtn, {TextColor3 = COLORS.Accent})
+                else
+                    DBtn.Text = "Select"
+                    Tween(DBtn, {TextColor3 = COLORS.SubText})
+                end
+                pcall(cb, selected)
+            end
+            
+            local function CreateOption(option)
+                local Opt = Instance.new("TextButton")
+                Opt.Size = UDim2.new(1, -10, 0, 28)
+                Opt.BackgroundColor3 = COLORS.Background
+                Opt.TextColor3 = COLORS.Text
+                Opt.Font = Enum.Font.GothamSemibold
+                Opt.TextSize = 12
+                Opt.Text = option
+                Opt.AutoButtonColor = false
+                Opt.Parent = dropdownFrame
+                Instance.new("UICorner", Opt).CornerRadius = UDim.new(0, 4)
+                
+                Opt.MouseButton1Click:Connect(function()
+                    selected = option
+                    dropdownOpen = false
+                    dropdownFrame.Visible = false
+                    local height = math.min(#options * 33, 200)
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                    F.ZIndex = 1
+                    dropdownFrame.ZIndex = 1
+                    
+                    UpdateDropdown()
+                end)
+                
+                Opt.MouseEnter:Connect(function()
+                    Tween(Opt, {BackgroundColor3 = COLORS.Hover})
+                end)
+                Opt.MouseLeave:Connect(function()
+                    Tween(Opt, {BackgroundColor3 = COLORS.Background})
+                end)
+            end
+            
+            for _, option in ipairs(options) do
+                CreateOption(option)
+            end
+            
+            DBtn.MouseButton1Click:Connect(function()
+                dropdownOpen = not dropdownOpen
+                if dropdownOpen then
+                    dropdownFrame.Visible = true
+                    local itemCount = #options
+                    local height = math.min(itemCount * 33, 200)
+                    dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, itemCount * 33 + 10)
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, height)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                    
+                    -- Set dropdown above other elements
+                    F.ZIndex = 2
+                    dropdownFrame.ZIndex = 3
+                else
+                    Tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                    task.wait(0.3)
+                    dropdownFrame.Visible = false
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                    F.ZIndex = 1
+                    dropdownFrame.ZIndex = 1
+                end
+            end)
+            
+            DBtn.MouseEnter:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Hover})
+                end
+            end)
+            DBtn.MouseLeave:Connect(function()
+                if not dropdownOpen then
+                    Tween(DBtn, {BackgroundColor3 = COLORS.Background})
+                end
+            end)
+        end
+        
+        return Elements
+    end
+
+    -- Only show GUI if not in hub
+    if CurrentGameID ~= 79546208627805 then
+        MainFrame.Size = UDim2.new(0, 0, 0, 0)
+        MainFrame.GroupTransparency = 1
+        Tween(MainFrame, {Size = UDim2.new(0, 620, 0, 420), GroupTransparency = 0}, 0.7, Enum.EasingStyle.Elastic)
+    else
+        -- Hide everything including borders when in hub
+        MainFrame.Visible = false
+    end
+    
+    -- Debug: Show game ID
+    Library:Notify("Debug", "Game ID: " .. tostring(CurrentGameID), 5)
+    
+    -- Notify which game was detected
+    local gameName = "Unknown Game"
+    if CurrentGameID == CHOPYOURTREE_ID then
+        gameName = "Chop Your Tree"
+    elseif CurrentGameID == TSUNAMIBRAINROT_ID then
+        gameName = "Tsunami Brainrot"
+    elseif CurrentGameID == 79546208627805 then
+        gameName = "99 Nights Hub"
+        Library:Notify("99 Nights in the Forest", "Join a game to use the full script", 5)
+    else
+        gameName = "Unknown (ID: " .. tostring(CurrentGameID) .. ")"
+    end
+    Library:Notify("Welcome!", "Trutel Hub loaded for " .. gameName, 5)
+
+    -- === BUILD HUB ===
+    if CurrentGameID == CHOPYOURTREE_ID and Config and State then
+        local Farming = Library:CreateTab("Farming", 10888331510)
+
+        Farming:CreateToggle("Auto Tap", function(v)
+            Config.AutoTap = v
+            if v then 
+                GameFunctions.StartAutoTap()
+                Library:Notify("Farming", "Auto Tap enabled", 2)
+            else 
+                GameFunctions.StopAutoTap()
+                Library:Notify("Farming", "Auto Tap disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Hit Trees (Mutations)", function(v)
+            Config.AutoMutations = v
+            if v then 
+                GameFunctions.StartAutoMutations()
+                Library:Notify("Farming", "Hit Trees enabled", 2)
+            else 
+                GameFunctions.StopAutoMutations()
+                Library:Notify("Farming", "Hit Trees disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Collect Coins", function(v)
+            Config.AutoCollectCoins = v
+            if v then 
+                GameFunctions.StartAutoCollect()
+                Library:Notify("Farming", "Collect Coins enabled", 2)
+            else 
+                GameFunctions.StopAutoCollect()
+                Library:Notify("Farming", "Collect Coins disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Fill Purifier", function(v)
+            Config.AutoFillPurifier = v
+            Config.AutoClaimPurifier = v
+            if v then 
+                GameFunctions.StartAutoFillPurifier()
+                GameFunctions.StartAutoClaimPurifier()
+                Library:Notify("Farming", "Fill Purifier enabled", 2)
+            else 
+                GameFunctions.StopAutoFillPurifier()
+                GameFunctions.StopAutoClaimPurifier()
+                Library:Notify("Farming", "Fill Purifier disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Use Cans", function(v)
+            Config.AutoUseCans = v
+            if v then 
+                GameFunctions.StartAutoUseCans()
+                Library:Notify("Farming", "Use Cans enabled", 2)
+            else 
+                GameFunctions.StopAutoUseCans()
+                Library:Notify("Farming", "Use Cans disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Pickup Cans", function(v)
+            Config.AutoPickupCans = v
+            if v then 
+                GameFunctions.StartAutoPickupCans()
+                Library:Notify("Farming", "Pickup Cans enabled", 2)
+            else 
+                GameFunctions.StopAutoPickupCans()
+                Library:Notify("Farming", "Pickup Cans disabled", 2)
+            end
+        end)
+
+        Farming:CreateToggle("Steal Cans (GP)", function(v)
+            Config.AutoSteal = v
+            if v then 
+                GameFunctions.StartAutoSteal()
+                Library:Notify("Farming", "Steal Cans enabled", 2)
+            else 
+                GameFunctions.StopAutoSteal()
+                Library:Notify("Farming", "Steal Cans disabled", 2)
+            end
+        end)
+
+        Farming:CreateSlider("Min Can Level", 1, 100, 3, function(v)
+            Config.WaterLevelThreshold = v
+        end)
+
+        Farming:CreateSlider("Tap Threads", 1, 20, 5, function(v)
+            Config.TapThreads = v
+        end)
+
+        Farming:CreateToggle("Auto Prestige", function(v)
+            Config.AutoPrestige = v
+            if v then 
+                GameFunctions.StartAutoPrestige()
+                Library:Notify("Farming", "Auto Prestige enabled", 2)
+            else 
+                GameFunctions.StopAutoPrestige()
+                Library:Notify("Farming", "Auto Prestige disabled", 2)
+            end
+        end)
+
+        Farming:CreateButton("Prestige Now!", function() 
+            GameFunctions.StartAutoPrestige()
+            GameFunctions.StopAutoPrestige()
+            Library:Notify("Farming", "Prestige executed", 2)
+        end)
+
+    end
+
+    -- ===== TSUNAMI BRAINROT UI =====
+    if CurrentGameID == TSUNAMIBRAINROT_ID and Config and State then
+        local TsunamiBrainrotMain = Library:CreateTab("Main", 10888331510)
+
+        TsunamiBrainrotMain:CreateToggle("Auto Collect Money", function(v)
+            Config.AutoCollectMoney = v
+            if v then
+                GameFunctions.StartAutoCollectMoney()
+                Library:Notify("Tsunami Brainrot", "Auto Collect Money enabled", 2)
+            else
+                GameFunctions.StopAutoCollectMoney()
+                Library:Notify("Tsunami Brainrot", "Auto Collect Money disabled", 2)
+            end
+        end)
+
+        TsunamiBrainrotMain:CreateToggle("Auto Upgrade Speed", function(v)
+            Config.AutoUpgradeSpeed = v
+            if v then
+                GameFunctions.StartAutoUpgradeSpeed()
+                Library:Notify("Tsunami Brainrot", "Auto Upgrade Speed enabled", 2)
+            else
+                GameFunctions.StopAutoUpgradeSpeed()
+                Library:Notify("Tsunami Brainrot", "Auto Upgrade Speed disabled", 2)
+            end
+        end)
+
+        TsunamiBrainrotMain:CreateSlider("Speed Upgrade Amount", 1, 20, 5, function(v)
+            Config.SpeedUpgradeAmount = v
+        end)
+
+        TsunamiBrainrotMain:CreateToggle("Auto Upgrade Carry", function(v)
+            Config.AutoUpgradeCarry = v
+            if v then
+                GameFunctions.StartAutoUpgradeCarry()
+                Library:Notify("Tsunami Brainrot", "Auto Upgrade Carry enabled", 2)
+            else
+                GameFunctions.StopAutoUpgradeCarry()
+                Library:Notify("Tsunami Brainrot", "Auto Upgrade Carry disabled", 2)
+            end
+        end)
+
+        TsunamiBrainrotMain:CreateToggle("Auto Sell All", function(v)
+            Config.AutoSellAll = v
+            if v then
+                GameFunctions.StartAutoSellAll()
+                Library:Notify("Tsunami Brainrot", "Auto Sell All enabled", 2)
+            else
+                GameFunctions.StopAutoSellAll()
+                Library:Notify("Tsunami Brainrot", "Auto Sell All disabled", 2)
+            end
+        end)
+
+        TsunamiBrainrotMain:CreateToggle("Auto Rebirth", function(v)
+            Config.AutoRebirth = v
+            if v then
+                GameFunctions.StartAutoRebirth()
+                Library:Notify("Tsunami Brainrot", "Auto Rebirth enabled", 2)
+            else
+                GameFunctions.StopAutoRebirth()
+                Library:Notify("Tsunami Brainrot", "Auto Rebirth disabled", 2)
+            end
+        end)
+
+        local TsunamiBrainrotWorld = Library:CreateTab("World", 10888333333)
+
+        TsunamiBrainrotWorld:CreateToggle("Instant Proximity", function(v)
+            Config.InstantPrompt = v
+            Library:Notify("Tsunami Brainrot", "Instant Proximity " .. (v and "enabled" or "disabled"), 2)
+        end)
+
+        TsunamiBrainrotWorld:CreateButton("Teleport to Home", function()
+            local base = nil
+            for _, v in pairs(workspace.Bases:GetChildren()) do
+                if v:IsA('Model') and v:GetAttribute('Holder') == LocalPlayer.UserId then 
+                    base = v 
+                    break
+                end
+            end
+            if base and base:FindFirstChild("Home") and LocalPlayer.Character then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = base.Home.CFrame
+                Library:Notify("Tsunami Brainrot", "Teleported to home", 2)
+            end
+        end)
+    end
+
+    -- ===== 99 NIGHTS IN THE FOREST GAME UI =====
+    if (CurrentGameID == 126509999114328 or game.GameId == 7326934954) and Config and State then
+        
+        -- Shared Definitions for 99 Nights
+        local targetFuel = {["Log"]=true, ["Coal"]=true, ["Oil Barrel"]=true, ["Fuel Canister"]=true, ["Cultist"]=true, ["Bear Corpse"]=true, ["Alpha Wolf Corpse"]=true, ["Wolf Corpse"]=true, ["Crossbow Cultist"]=true}
+        local targetMetal = {["Bolt"]=true, ["Sheet Metal"]=true, ["UFO Junk"]=true, ["UFO Component"]=true, ["Broken Fan"]=true, ["Broken Radio"]=true, ["Broken Microwave"]=true, ["Tyre"]=true, ["Metal Chair"]=true, ["Old Car Engine"]=true, ["Cultist Experiment"]=true, ["Washing Machine"]=true, ["Cultist Prototype"]=true, ["UFO Scrap"]=true}
+        local targetFood = {["Cooked Morsel"]=true, ["Grapes"]=true, ["Steak"]=true, ["BBQ Ribs"]=true, ["Candy Apple"]=true, ["Carrot"]=true, ["Berry"]=true, ["Cotton Candy"]=true, ["Chili"]=true, ["Lava Eel"]=true, ["Candy Corn"]=true, ["Morsel"]=true, ["Stew"]=true, ["Corn"]=true, ["Pumpkin"]=true, ["Casserole"]=true, ["Apple"]=true, ["Berry Juice"]=true, ["Ribs"]=true, ["Cake"]=true, ["Hearty Stew"]=true, ["Shark"]=true, ["Swordfish"]=true, ["Eel"]=true, ["Char"]=true, ["Mackerel"]=true, ["Salmon"]=true, ["Clownfish"]=true}
+        local targetAmmo = {["Revolver Ammo"]=true, ["Rifle Ammo"]=true, ["Shotgun Ammo"]=true}
+        local targetTools = {["Bandage"]=true, ["Rifle"]=true, ["Revolver"]=true, ["Laser Cannon"]=true, ["Ray Gun"]=true, ["Laser Sword"]=true, ["Katana"]=true, ["Strong Flashlight"]=true, ["Old Flashlight"]=true}
+
+        local Main = Library:CreateTab("Main", 10888331510)
+
+        Main:CreateToggle("Auto Days", function(v)
+            Config.AutoDays = v
+            
+            local platformName = "AutoDaySafePlatform"
+            local existing = workspace:FindFirstChild(platformName)
+            if existing then existing:Destroy() end
+
+            if v then
+                local character = LocalPlayer.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                if not hrp then
+                    Library:Notify("99 Nights in the Forest", "Character not found", 2)
+                    Config.AutoDays = false
+                    return
+                end
+                
+                -- Create Safety Platform
+                local platform = Instance.new("Part")
+                platform.Name = platformName
+                platform.Size = Vector3.new(10, 1, 10)
+                platform.Anchored = true
+                platform.CanCollide = true
+                platform.Transparency = 0.5
+                platform.Color = Color3.fromRGB(0, 150, 255)
+                platform.Parent = workspace
+                
+                -- Calculate Center (Campfire or Origin)
+                local center = Vector3.new(0, 0, 0)
+                local campfire = workspace.Map and workspace.Map.Campground and workspace.Map.Campground:FindFirstChild("MainFire")
+                if campfire and campfire:IsA("Model") and campfire.PrimaryPart then
+                    center = campfire.PrimaryPart.Position
+                elseif campfire and campfire:IsA("BasePart") then
+                    center = campfire.Position
+                end
+
+                local radius = 150
+                local height = 100
+                local speed = 0.5
+                local angle = 0
+                
+                task.spawn(function()
+                    while Config.AutoDays do
+                        character = LocalPlayer.Character
+                        hrp = character and character:FindFirstChild("HumanoidRootPart")
+                        if not hrp then break end
+                        
+                        -- Update Angle
+                        angle = angle + speed * 0.1 -- smoother update rate
+                        local x = math.cos(angle) * radius
+                        local z = math.sin(angle) * radius
+                        local targetPos = center + Vector3.new(x, height, z)
+                        
+                        -- Tween
+                        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Linear)
+                        local cf = CFrame.new(targetPos, center)
+                        
+                        if platform and platform.Parent then
+                            TweenService:Create(platform, tweenInfo, {CFrame = cf * CFrame.new(0, -3.5, 0)}):Play()
+                        end
+                        TweenService:Create(hrp, tweenInfo, {CFrame = cf}):Play()
+                        
+                        -- Auto eat while farming days
+                        if Config.AutoEat then
+                            local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+                            local Interface = PlayerGui:FindFirstChild("Interface")
+                            if Interface then
+                                local StatBars = Interface:FindFirstChild("StatBars")
+                                if StatBars then
+                                    local HungerBar = StatBars:FindFirstChild("HungerBar")
+                                    if HungerBar then
+                                        local Bar = HungerBar:FindFirstChild("Bar")
+                                        if Bar then
+                                            local r = math.round(Bar.BackgroundColor3.R * 255)
+                                            local g = math.round(Bar.BackgroundColor3.G * 255)
+                                            local b = math.round(Bar.BackgroundColor3.B * 255)
+                                            
+                                            -- Eat if color is NOT the "full" color (255, 123, 57)
+                                            if r ~= 255 or g ~= 123 or b ~= 57 then
+                                                local requestConsume = game:GetService("ReplicatedStorage").RemoteEvents:FindFirstChild("RequestConsumeItem")
+                                                if requestConsume then
+                                                for _, item in ipairs(workspace.Items:GetChildren()) do
+                                                    if targetFood[item.Name] then
+                                                        pcall(function()
+                                                            requestConsume:InvokeServer(item)
+                                                            -- Add small delay to avoid spamming network if successful, or just rely on loop
+                                                            task.wait(0.1) 
+                                                        end)
+                                                        break
+                                                    end
+                                                end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        
+                        task.wait(0.1)
+                    end
+                    
+                    -- Cleanup
+                    if workspace:FindFirstChild(platformName) then
+                        workspace:FindFirstChild(platformName):Destroy()
+                    end
+                end)
+                Library:Notify("99 Nights in the Forest", "Auto Days enabled", 2)
+            else
+                if workspace:FindFirstChild(platformName) then
+                    workspace:FindFirstChild(platformName):Destroy()
+                end
+                Library:Notify("99 Nights in the Forest", "Auto Days disabled", 2)
+            end
+        end)
+
+        Main:CreateToggle("Auto Eat", function(v)
+            Config.AutoEat = v
+            if v then
+                Library:Notify("99 Nights in the Forest", "Auto Eat enabled (works with Auto Days)", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "Auto Eat disabled", 2)
+            end
+        end)
+
+        Main:CreateToggle("Auto Cook Foods", function(v)
+            Config.AutoCook = v
+            if v then
+                task.spawn(function()
+                    while Config.AutoCook do
+                        local plr = LocalPlayer
+                        local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            local campfire = workspace.Map and workspace.Map.Campground and workspace.Map.Campground:FindFirstChild("MainFire")
+                            if campfire and campfire.PrimaryPart then
+                                local requestDrag = game:GetService("ReplicatedStorage").RemoteEvents:FindFirstChild("RequestStartDraggingItem")
+                                local stopDrag = game:GetService("ReplicatedStorage").RemoteEvents:FindFirstChild("StopDraggingItem")
+                                
+                                if requestDrag and stopDrag then
+                                    for _, item in ipairs(workspace.Items:GetChildren()) do
+                                        if item:IsA("Model") and item.PrimaryPart and 
+                                           (string.find(item.Name, "Morsel") or string.find(item.Name, "Steak")) then
+                                           
+                                            pcall(function()
+                                                requestDrag:FireServer(item)
+                                                task.wait(0.05)
+                                                local targetCFrame = campfire.PrimaryPart.CFrame * CFrame.new(0, 8, 0)
+                                                item:PivotTo(targetCFrame)
+                                                task.wait(0.05)
+                                                stopDrag:FireServer(item)
+                                            end)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        task.wait(2)
+                    end
+                end)
+                Library:Notify("99 Nights in the Forest", "Auto Cook enabled", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "Auto Cook disabled", 2)
+            end
+        end)
+
+        Main:CreateButton("Open All Chests", function()
+            local chestFolder = workspace.Items
+            local remote = game:GetService("ReplicatedStorage").RemoteEvents:WaitForChild("RequestOpenItemChest")
+            for _, v in ipairs(chestFolder:GetChildren()) do
+                if v.Name == "Item Chest" or v.Name == "Item Chest2" or v.Name == "Item Chest3" or v.Name == "Item Chest4" or v.Name == "Item Chest5" or v.Name == "Item Chest6" or v.Name == "Alien Chest" then
+                    remote:FireServer(v)
+                end
+            end
+            Library:Notify("99 Nights in the Forest", "Opening all chests", 2)
+        end)
+
+        Main:CreateToggle("Auto Kill Bunny", function(v)
+            Config.AutoKillBunny = v
+            if v then
+                Library:Notify("99 Nights in the Forest", "Auto Kill Bunny enabled", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "Auto Kill Bunny disabled", 2)
+            end
+        end)
+
+        Main:CreateToggle("God Mode", function(v)
+            Config.GodMode = v
+            if v then
+                task.spawn(function()
+                    while Config.GodMode do
+                        local character = LocalPlayer.Character
+                        local humanoid = character and character:FindFirstChild("Humanoid")
+                        if humanoid then
+                            humanoid.Health = humanoid.MaxHealth
+                        end
+                        task.wait(0.1)
+                    end
+                end)
+                Library:Notify("99 Nights in the Forest", "God Mode enabled", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "God Mode disabled", 2)
+            end
+        end)
+
+        Main:CreateButton("Explore Map", function()
+            task.spawn(function()
+                local boundaries = workspace.Map and workspace.Map:FindFirstChild("Boundaries")
+                if boundaries then
+                    local character = LocalPlayer.Character
+                    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                    local startCFrame = hrp and hrp.CFrame
+                    
+                    if not startCFrame then
+                        Library:Notify("99 Nights in the Forest", "Cannot find starting position", 2)
+                        return
+                    end
+
+                    Library:Notify("99 Nights in the Forest", "Starting exploration...", 2)
+                    for _, v in ipairs(boundaries:GetChildren()) do
+                        if string.lower(v.Name) ~= "fog" then
+                            character = LocalPlayer.Character
+                            hrp = character and character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local targetPos = nil
+                                if v:IsA("BasePart") then
+                                    targetPos = v.Position
+                                elseif v:IsA("Model") then
+                                    targetPos = v:GetPivot().Position
+                                end
+                                
+                                if targetPos then
+                                    pcall(function()
+                                        hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 25, 0))
+                                    end)
+                                    task.wait(0.1)
+                                end
+                            else
+                                break
+                            end
+                        end
+                    end
+                    
+                    if startCFrame and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                         LocalPlayer.Character.HumanoidRootPart.CFrame = startCFrame
+                         Library:Notify("99 Nights in the Forest", "Map exploration finished, returned to start", 2)
+                    end
+                else
+                    Library:Notify("99 Nights in the Forest", "Boundaries folder not found", 2)
+                end
+            end)
+        end)
+
+        local Child = Library:CreateTab("Child", 10888333333)
+
+        Child:CreateSingleDropdown("Tween to Lost Child", {"Lost Child 1", "Lost Child 2", "Lost Child 3", "Lost Child 4"}, function(selected)
+            if not selected then return end
+            
+            local Players = game:GetService("Players")
+            local TweenService = game:GetService("TweenService")
+            local player = Players.LocalPlayer
+            local character = player.Character or player.CharacterAdded:Wait()
+            local root = character:WaitForChild("HumanoidRootPart")
+            local originalCFrame = root.CFrame
+            
+            local childNumber = selected:match("Lost Child (%d+)")
+            local targetChildName = "Lost Child"
+            if childNumber and childNumber ~= "1" then
+                targetChildName = "Lost Child" .. childNumber
+            end
+            
+            local function findLostChild()
+                local charactersFolder = workspace:WaitForChild("Characters")
+                for _, child in pairs(charactersFolder:GetChildren()) do
+                    if child.Name == targetChildName then
+                        local hrp = child:FindFirstChild("HumanoidRootPart") or child:FindFirstChildWhichIsA("BasePart")
+                        if hrp then return hrp end
+                    end
+                end
+                return nil
+            end
+            
+            local target = findLostChild()
+            if not target then
+                Library:Notify("Error", "Cannot find " .. selected, 3)
+            else
+                local distance = (root.Position - target.Position).Magnitude
+                local tweenInfo = TweenInfo.new(distance / 500, Enum.EasingStyle.Linear)
+                local tweenTo = TweenService:Create(root, tweenInfo, {CFrame = target.CFrame + Vector3.new(0, 3, 0)})
+                tweenTo:Play()
+                tweenTo.Completed:Wait()
+                task.wait(15)
+                local tweenBack = TweenService:Create(root, TweenInfo.new(1, Enum.EasingStyle.Linear), {CFrame = originalCFrame})
+                tweenBack:Play()
+                Library:Notify("99 Nights in the Forest", "Delivered " .. selected, 2)
+            end
+        end)
+
+        local Brings = Library:CreateTab("Brings", 10888333333)
+
+        -- Items are now defined at the top of the 99 Nights block
+
+        local rs = game:GetService("ReplicatedStorage")
+        local requestDrag = rs.RemoteEvents.RequestStartDraggingItem
+        local stopDrag = rs.RemoteEvents.StopDraggingItem
+
+        local bringActive = false
+        local selectedBringItems = {}
+        local allBringOptions = {"Fuel", "Metal", "Food", "Ammo", "Tools", "Sapling", "Log", "Coal", "Broken Microwave", "Steak"}
+        
+        Brings:CreateDropdown("Select Items to Bring", allBringOptions, function(selected)
+            selectedBringItems = selected
+        end)
+
+        Brings:CreateToggle("Start Bringing", function(v)
+            bringActive = v
+            if v then
+                local savedPos = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.CFrame or nil
+                if not savedPos then 
+                    bringActive = false
+                    Library:Notify("99 Nights in the Forest", "Cannot find position", 2)
+                    return 
+                end
+                
+                task.spawn(function()
+                    while bringActive do
+                        -- Update saved position every iteration
+                        local character = LocalPlayer.Character
+                        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            savedPos = hrp.CFrame
+                        end
+                        
+                        for itemName, _ in pairs(selectedBringItems) do
+                            if not bringActive then break end
+                            
+                            local targetTable = {}
+                            if itemName == "Fuel" then targetTable = targetFuel
+                            elseif itemName == "Metal" then targetTable = targetMetal
+                            elseif itemName == "Food" then targetTable = targetFood
+                            elseif itemName == "Ammo" then targetTable = targetAmmo
+                            elseif itemName == "Tools" then targetTable = targetTools
+                            elseif itemName == "Sapling" or itemName == "Log" or itemName == "Coal" or itemName == "Broken Microwave" or itemName == "Steak" then
+                                targetTable = {[itemName] = true}
+                            end
+                            
+                            if workspace:FindFirstChild("Items") then
+                                for _, item in ipairs(workspace.Items:GetChildren()) do
+                                    if not bringActive then break end
+                                    if item:IsA("Model") and item.PrimaryPart and targetTable[item.Name] then
+                                        pcall(function()
+                                            if requestDrag and stopDrag then
+                                                requestDrag:FireServer(item)
+                                                task.wait(0.05)
+                                                item:PivotTo(savedPos * CFrame.new(0, 3, 0))
+                                                task.wait(0.05)
+                                                stopDrag:FireServer(item)
+                                                task.wait(0.1)
+                                            end
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                        task.wait(0.5)
+                    end
+                end)
+                Library:Notify("99 Nights in the Forest", "Started bringing selected items", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "Stopped bringing", 2)
+            end
+        end)
+
+        local Player = Library:CreateTab("Player", 10888333333)
+
+        Player:CreateSlider("Walk Speed", 16, 250, 16, function(v)
+            if LocalPlayer.Character then
+                LocalPlayer.Character.Humanoid.WalkSpeed = v
+            end
+        end)
+
+        Player:CreateToggle("Infinite Jump", function(v)
+            _G.InfJump = v
+        end)
+
+        local Combat = Library:CreateTab("Combat", 10888333333)
+
+        local killAuraActive = false
+        local killAuraDistance = 70
+        Combat:CreateSlider("Kill Aura Distance", 20, 1200, 70, function(v)
+            killAuraDistance = v
+        end)
+
+        Combat:CreateToggle("Kill Aura", function(v)
+            killAuraActive = v
+            if v then
+                task.spawn(function()
+                    while killAuraActive do
+                        pcall(function()
+                            local player = LocalPlayer
+                            local character = player.Character
+                            if character then
+                                local hrp = character:FindFirstChild("HumanoidRootPart")
+                                -- Try to find weapon in Character (equipped) or Backpack (unequipped) or Inventory (custom)
+                                local weapon = character:FindFirstChild("Old Axe") or character:FindFirstChild("Good Axe") or character:FindFirstChild("Strong Axe") or character:FindFirstChild("Chainsaw")
+                                if not weapon then
+                                    weapon = player.Backpack:FindFirstChild("Old Axe") or player.Backpack:FindFirstChild("Good Axe") or player.Backpack:FindFirstChild("Strong Axe") or player.Backpack:FindFirstChild("Chainsaw")
+                                end
+                                if not weapon and player:FindFirstChild("Inventory") then
+                                     weapon = player.Inventory:FindFirstChild("Old Axe") or player.Inventory:FindFirstChild("Good Axe") or player.Inventory:FindFirstChild("Strong Axe") or player.Inventory:FindFirstChild("Chainsaw")
+                                end
+                                
+                                if weapon and hrp then
+                                    local charactersFolder = workspace:FindFirstChild("Characters")
+                                    if charactersFolder then
+                                        for _, mob in pairs(charactersFolder:GetChildren()) do
+                                            if not killAuraActive then break end
+                                            if mob:IsA("Model") and mob.PrimaryPart and mob ~= character then
+                                                local distance = (mob.PrimaryPart.Position - hrp.Position).Magnitude
+                                                if distance <= killAuraDistance * 100 then -- Increased range check
+                                                    task.spawn(function()
+                                                        pcall(function()
+                                                            local args = {
+                                                                [1] = mob,
+                                                                [2] = weapon,
+                                                                [3] = 999,
+                                                                [4] = hrp.CFrame
+                                                            }
+                                                            game:GetService("ReplicatedStorage").RemoteEvents.ToolDamageObject:InvokeServer(unpack(args))
+                                                        end)
+                                                    end)
+                                                    task.wait() -- Minimal yield to prevent crash but keep it fast
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end)
+                        task.wait(0.01)
+                    end
+                end)
+                Library:Notify("99 Nights in the Forest", "Kill Aura enabled", 2)
+            else
+                Library:Notify("99 Nights in the Forest", "Kill Aura disabled", 2)
+            end
+        end)
+
+        local chopTreeActive = false
+        local chopTreeDistance = 100
+        Combat:CreateSlider("Tree Chop Distance", 20, 100, 100, function(v)
+            chopTreeDistance = v
+        end)
+
+        Combat:CreateToggle("Auto Chop Tree", function(v)
+            chopTreeActive = v
+            if v then
+                task.spawn(function()
+                    while chopTreeActive do
+                        local character = LocalPlayer.Character
+                        if character then
+                            local hrp = character:FindFirstChild("HumanoidRootPart")
+                            local weapon = LocalPlayer.Inventory:FindFirstChild("Old Axe") or LocalPlayer.Inventory:FindFirstChild("Good Axe") or LocalPlayer.Inventory:FindFirstChild("Strong Axe") or LocalPlayer.Inventory:FindFirstChild("Chainsaw")
+                            if weapon and hrp then
+                                local function chop(folder)
+                                    for _, tree in pairs(folder:GetChildren()) do
+                                        if tree:IsA("Model") and (tree.Name == "Small Tree" or tree.Name == "TreeBig1" or tree.Name == "TreeBig2") and tree.PrimaryPart then
+                                            local distance = (tree.PrimaryPart.Position - hrp.Position).Magnitude
+                                            if distance <= chopTreeDistance then
+                                                pcall(function()
+                                                    game:GetService("ReplicatedStorage").RemoteEvents.ToolDamageObject:InvokeServer(tree, weapon, 999, hrp.CFrame)
+                                                end)
+                                            end
+                                        end
+                                    end
+                                end
+                                pcall(function() chop(workspace.Map.Foliage) end)
+                                pcall(function() chop(workspace.Map.Landmarks) end)
+                            end
+                        end
+                        task.wait(0.05)
+                    end
+                end)
+            end
+        end)
+
+        local ESP = Library:CreateTab("ESP", 10888333333)
+
+        local selectedESPItems = {}
+        local espOptions = {"Fuel", "Metal", "Food"}
+        
+        local espItemMaps = {
+            Fuel = {["Log"]=true, ["Coal"]=true, ["Oil Barrel"]=true, ["Fuel Canister"]=true, ["Cultist"]=true, ["Bear Corpse"]=true, ["Alpha Wolf Corpse"]=true, ["Wolf Corpse"]=true, ["Crossbow Cultist"]=true},
+            Metal = {["Bolt"]=true, ["Sheet Metal"]=true, ["UFO Junk"]=true, ["UFO Component"]=true, ["Broken Fan"]=true, ["Broken Radio"]=true, ["Broken Microwave"]=true, ["Tyre"]=true, ["Metal Chair"]=true, ["Old Car Engine"]=true, ["Cultist Experiment"]=true, ["Washing Machine"]=true, ["Cultist Prototype"]=true, ["UFO Scrap"]=true},
+            Food = {["Steak"]=true, ["BBQ Ribs"]=true, ["Candy Apple"]=true, ["Carrot"]=true, ["Berry"]=true, ["Cotton Candy"]=true, ["Chili"]=true, ["Lava Eel"]=true, ["Candy Corn"]=true, ["Morsel"]=true, ["Stew"]=true, ["Corn"]=true, ["Pumpkin"]=true, ["Casserole"]=true, ["Apple"]=true, ["Berry Juice"]=true, ["Ribs"]=true, ["Cake"]=true, ["Hearty Stew"]=true, ["Shark"]=true, ["Swordfish"]=true, ["Eel"]=true, ["Char"]=true, ["Mackerel"]=true, ["Salmon"]=true, ["Clownfish"]=true}
+        }
+        
+        local espColors = {
+            Fuel = Color3.fromRGB(255, 215, 0),
+            Metal = Color3.fromRGB(255, 0, 0),
+            Food = Color3.fromRGB(0, 255, 0)
+        }
+        
+        local espConnections = {}
+        
+        ESP:CreateDropdown("Select Items to Highlight", espOptions, function(selected)
+            selectedESPItems = selected
+        end)
+
+        ESP:CreateToggle("Enable ESP", function(v)
+            if v then
+                for _, item in ipairs(workspace.Items:GetChildren()) do
+                    for espType, _ in pairs(selectedESPItems) do
+                        if item:IsA("Model") and item.PrimaryPart and espItemMaps[espType][item.Name] then
+                            if not item:FindFirstChild(espType .. "Highlight") then
+                                local hl = Instance.new("Highlight")
+                                hl.Name = espType .. "Highlight"
+                                hl.FillColor = espColors[espType]
+                                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                                hl.FillTransparency = 0.5
+                                hl.OutlineTransparency = 0
+                                hl.Adornee = item
+                                hl.Parent = item.PrimaryPart
+                                
+                                local billboard = Instance.new("BillboardGui")
+                                billboard.Adornee = item.PrimaryPart
+                                billboard.Size = UDim2.new(0, 200, 0, 50)
+                                billboard.StudsOffset = Vector3.new(0, 3, 0)
+                                billboard.AlwaysOnTop = true
+                                billboard.Parent = item
+                                local text = Instance.new("TextLabel")
+                                text.Size = UDim2.new(1, 0, 1, 0)
+                                text.BackgroundTransparency = 1
+                                text.Text = item.Name
+                                text.TextColor3 = espColors[espType]
+                                text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                                text.TextStrokeTransparency = 0
+                                text.TextSize = 14
+                                text.Font = Enum.Font.SourceSansBold
+                                text.Parent = billboard
+                            end
+                        end
+                    end
+                end
+                
+                if not espConnections["childAdded"] then
+                    espConnections["childAdded"] = workspace.Items.ChildAdded:Connect(function(item)
+                        task.wait(0.2)
+                        for espType, _ in pairs(selectedESPItems) do
+                            if item:IsA("Model") and item.PrimaryPart and espItemMaps[espType][item.Name] then
+                                if not item:FindFirstChild(espType .. "Highlight") then
+                                    local hl = Instance.new("Highlight")
+                                    hl.Name = espType .. "Highlight"
+                                    hl.FillColor = espColors[espType]
+                                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                                    hl.FillTransparency = 0.5
+                                    hl.OutlineTransparency = 0
+                                    hl.Adornee = item
+                                    hl.Parent = item.PrimaryPart
+                                    
+                                    local billboard = Instance.new("BillboardGui")
+                                    billboard.Adornee = item.PrimaryPart
+                                    billboard.Size = UDim2.new(0, 200, 0, 50)
+                                    billboard.StudsOffset = Vector3.new(0, 3, 0)
+                                    billboard.AlwaysOnTop = true
+                                    billboard.Parent = item
+                                    local text = Instance.new("TextLabel")
+                                    text.Size = UDim2.new(1, 0, 1, 0)
+                                    text.BackgroundTransparency = 1
+                                    text.Text = item.Name
+                                    text.TextColor3 = espColors[espType]
+                                    text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                                    text.TextStrokeTransparency = 0
+                                    text.TextSize = 14
+                                    text.Font = Enum.Font.SourceSansBold
+                                    text.Parent = billboard
+                                end
+                            end
+                        end
+                    end)
+                end
+                Library:Notify("99 Nights in the Forest", "ESP enabled for selected items", 2)
+            else
+                for _, item in ipairs(workspace.Items:GetChildren()) do
+                    for espType, _ in pairs(selectedESPItems) do
+                        if item:FindFirstChild(espType .. "Highlight") then
+                            item:FindFirstChild(espType .. "Highlight"):Destroy()
+                        end
+                    end
+                    local billboards = item:FindFirstChildWhichIsA("BillboardGui")
+                    if billboards then billboards:Destroy() end
+                end
+                if espConnections["childAdded"] then
+                    espConnections["childAdded"]:Disconnect()
+                    espConnections["childAdded"] = nil
+                end
+                Library:Notify("99 Nights in the Forest", "ESP disabled", 2)
+            end
+        end)
+    end
+
+    -- Only create UI tabs for actual games, not hub
+    if CurrentGameID == 126509999114328 or game.GameId == 7326934954 then
+        local Misc = Library:CreateTab("Misc", 10888333333)
+
+        local Lighting = game:GetService("Lighting")
+        local fullBrightConnection = nil
+
+        Misc:CreateToggle("Full Bright", function(v)
+            if v then
+                fullBrightConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+                    Lighting.ColorShift_Bottom = Color3.fromRGB(255, 255, 255)
+                    Lighting.ColorShift_Top = Color3.fromRGB(255, 255, 255)
+                    Lighting.Brightness = 2
+                    Lighting.ClockTime = 14
+                    Lighting.FogEnd = 1e6
+                end)
+                Library:Notify("99 Nights in the Forest", "Full Bright enabled", 2)
+            else
+                if fullBrightConnection then
+                    fullBrightConnection:Disconnect()
+                    fullBrightConnection = nil
+                end
+                Lighting.Ambient = Color3.fromRGB(127, 127, 127)
+                Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
+                Lighting.ColorShift_Top = Color3.fromRGB(127, 127, 127)
+                Lighting.Brightness = 1
+                Lighting.ClockTime = 12
+                Lighting.FogEnd = 1000
+                Library:Notify("99 Nights in the Forest", "Full Bright disabled", 2)
+            end
+        end)
+
+        Misc:CreateButton("Teleport to Campfire", function()
+            local player = LocalPlayer
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            local campfire = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Campground") and workspace.Map.Campground:FindFirstChild("MainFire")
+            if hrp and campfire and campfire:IsA("Model") and campfire.PrimaryPart then
+                hrp.CFrame = campfire.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
+                Library:Notify("99 Nights in the Forest", "Teleported to campfire", 2)
+            end
+        end)
+
+        Misc:CreateButton("Reset Character", function() 
+            LocalPlayer.Character:BreakJoints() 
+        end)
+
+        Misc:CreateButton("Rejoin", function() 
+            game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer) 
+        end)
+    end -- End 99 Nights game check
+
+    -- ===== RIVALS LOGIC =====
+    if CurrentGameID == RIVALS_ID then
+        local Combat = Library:CreateTab("Combat", 13785934164)
+        local Visuals = Library:CreateTab("Visuals", 13785934164)
+        local Misc = Library:CreateTab("Misc", 13785934164)
+
+        -- Rivals specific utilities
+        local originalGCAttributes = {}
+        local LPH_NO_VIRTUALIZE = function(f) return f end 
+
+        local function updateItemAttribute(name, newValue)
+            for _, tbl in pairs(getgc(true)) do
+                if type(tbl) == "table" and rawget(tbl, name) then
+                    local oldValue = tbl[name]
+                    local valueToSet = newValue
+
+                    if type(newValue) == "function" then
+                        valueToSet = newValue(oldValue)
+                        if valueToSet == nil then continue end
+                    end
+
+                    if originalGCAttributes[tbl] == nil then
+                        originalGCAttributes[tbl] = {}
+                    end
+
+                    if originalGCAttributes[tbl][name] == nil then
+                        originalGCAttributes[tbl][name] = oldValue
+                    end
+
+                    tbl[name] = valueToSet
+                end
+            end
+        end
+
+        local function restoreItemAttribute(name)
+            for tbl, values in pairs(originalGCAttributes) do
+                if values[name] ~= nil then
+                    tbl[name] = values[name]
+                    values[name] = nil
+                end
+
+                local empty = true
+                for _, v in pairs(values) do
+                    if v ~= nil then
+                        empty = false
+                        break
+                    end
+                end
+                if empty then
+                    originalGCAttributes[tbl] = nil
+                end
+            end
+        end
+
+        -- Combat Tab
+        Combat:CreateToggle("No Slowdown", function(v)
+            if v then
+                updateItemAttribute("WalkSpeedMultiplier", function(oldValue)
+                    if oldValue < 1 then return 1 end
+                    return oldValue
+                end)
+            else
+                restoreItemAttribute("WalkSpeedMultiplier")
+            end
+        end)
+
+        Combat:CreateToggle("No Spread", function(v)
+            if v then updateItemAttribute("ShootSpread", 0) else restoreItemAttribute("ShootSpread") end
+        end)
+
+        Combat:CreateToggle("No Recoil", function(v)
+            if v then updateItemAttribute("ShootRecoil", 0) else restoreItemAttribute("ShootRecoil") end
+        end)
+
+        Combat:CreateToggle("Instant Aim", function(v)
+            if v then updateItemAttribute("AimSpeed", 100) else restoreItemAttribute("AimSpeed") end
+        end)
+
+        Combat:CreateToggle("Max Accuracy", function(v)
+            if v then updateItemAttribute("ShootAccuracy", 100) else restoreItemAttribute("ShootAccuracy") end
+        end)
+
+        Combat:CreateToggle("No Dash Cooldown", function(v)
+            if v then updateItemAttribute("DashCooldown", 0) else restoreItemAttribute("DashCooldown") end
+        end)
+
+         Combat:CreateSlider("Dash Speed", 1, 5000, 100, function(v)
+             updateItemAttribute("DashSpeed", v)
+         end)
+
+        -- Visuals Tab
+        local externalModules = {}
+        task.spawn(function()
+             local playerScripts = LocalPlayer:WaitForChild("PlayerScripts", 5)
+             local clientModules = playerScripts and playerScripts:WaitForChild("Modules", 5)
+             local clientReplicatedClasses = clientModules and clientModules:WaitForChild("ClientReplicatedClasses", 5)
+             local clientFighter = clientReplicatedClasses and clientReplicatedClasses:WaitForChild("ClientFighter", 5)
+             local fighterInterface = clientFighter and clientFighter:WaitForChild("FighterInterface", 5)
+             local flashed = fighterInterface and fighterInterface:WaitForChild("Flashed", 5)
+             if flashed then externalModules.Flashed = require(flashed) end
+        end)
+
+        Visuals:CreateToggle("Anti Blind", function(v)
+             if externalModules.Flashed then
+                 -- This uses a simplified BlankFunction logic
+                 local originalFlash = externalModules.Flashed.Flash
+                 if v then
+                     externalModules.Flashed.Flash = function() end
+                 else
+                    -- Warning: This simple restore might not work if not stored properly,
+                    -- but for a simple toggle script we rely on re-requiring or just keeping it disabled.
+                    -- Better implementation:
+                 end
+             end
+        end)
+        
+        -- ESP Logic (Simple Box ESP)
+        local espEnabled = false
+        local espConnections = {}
+        
+        local function AddEsp(player)
+            if player == LocalPlayer then return end
+            
+            local function Update()
+                if not espEnabled then return end
+                if not player.Character then return end
+                
+                local highlight = player.Character:FindFirstChild("RivalsHighlight")
+                if not highlight then
+                    highlight = Instance.new("Highlight")
+                    highlight.Name = "RivalsHighlight"
+                    highlight.FillTransparency = 1
+                    highlight.OutlineTransparency = 0
+                    highlight.OutlineColor = (player.Team == LocalPlayer.Team) and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    highlight.Parent = player.Character
+                end
+            end
+            
+            espConnections[player] = RunService.RenderStepped:Connect(Update)
+        end
+        
+        Visuals:CreateToggle("ESP Enabled", function(v)
+            espEnabled = v
+            if v then
+                for _, player in pairs(Players:GetPlayers()) do
+                    AddEsp(player)
+                end
+                Connections["ESP_PlayerAdded"] = Players.PlayerAdded:Connect(AddEsp)
+            else
+                if Connections["ESP_PlayerAdded"] then Connections["ESP_PlayerAdded"]:Disconnect() end
+                for _, conn in pairs(espConnections) do conn:Disconnect() end
+                espConnections = {}
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player.Character then
+                        local h = player.Character:FindFirstChild("RivalsHighlight")
+                        if h then h:Destroy() end
+                    end
+                end
+            end
+        end)
+
+        -- Misc Tab
+        Misc:CreateButton("Get Player Info", function()
+             -- Print to console or notify
+            Library:Notify("Rivals", "Check F9 Console for Player Info", 3)
+            -- Implementation requires Remote check
+        end)
+
+        local SpeedMult = 1
+        local JumpMult = 1
+        
+        Misc:CreateSlider("Speed Multiplier", 1, 4, 1, function(v)
+            SpeedMult = v
+            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+            if hum then hum.WalkSpeed = 16 * v end
+        end)
+
+        Misc:CreateSlider("Jump Multiplier", 1, 15, 1, function(v)
+            JumpMult = v
+            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+            if hum then
+                if hum.UseJumpPower then hum.JumpPower = 50 * v else hum.JumpHeight = 7 * v end
+            end
+        end)
+        
+        -- Hook for persistent speed/jump
+        local oldIndex, oldNewIndex
+        oldNewIndex = hookmetamethod(game, "__newindex", function(t, k, v)
+            if not checkcaller() and t:IsA("Humanoid") then
+                if k == "WalkSpeed" then
+                    return oldNewIndex(t, k, v * SpeedMult)
+                elseif k == "JumpPower" or k == "JumpHeight" then
+                    return oldNewIndex(t, k, v * JumpMult)
+                end
+            end
+            return oldNewIndex(t, k, v)
+        end)
+    end
+
+end -- End InitializeScript function
+
+-- Execute the script
+InitializeScript()
